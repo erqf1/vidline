@@ -7,6 +7,7 @@
 #include <QListWidget>
 #include <QPushButton>
 #include "model.h"
+#include "tags.h"
 
 // Erststart: Sprache wählen
 class LanguageDialog : public QDialog {
@@ -17,6 +18,32 @@ public:
 
 private:
     QListWidget* list_;
+};
+
+// Tags einer Tondatei: Cover, Titel, Interpret ... Bilder lassen sich auch hineinziehen.
+class TagDialog : public QDialog {
+    Q_OBJECT
+public:
+    TagDialog(QWidget* parent, const QString& path, const AudioTags& tags);
+    AudioTags tags() const;
+
+protected:
+    void dragEnterEvent(QDragEnterEvent* e) override;
+    void dropEvent(QDropEvent* e) override;
+
+private:
+    void setCover(const QImage& img);
+    AudioTags tags_;
+    bool coverOk_;
+    QLabel* cover_;
+    QPushButton* remove_;
+    QLineEdit* title_;
+    QLineEdit* artist_;
+    QLineEdit* album_;
+    QLineEdit* albumArtist_;
+    QLineEdit* year_;
+    QLineEdit* track_;
+    QLineEdit* genre_;
 };
 
 // Einstellungen: Sprache + Design (wirkt sofort)

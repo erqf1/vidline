@@ -13,7 +13,7 @@ def logo(p, x, y, s):
     p.translate(x, y)
     p.scale(s / 100.0, s / 100.0)
     g = QLinearGradient(0, 0, 100, 100)
-    g.setColorAt(0, QColor("#22d3a0")); g.setColorAt(1, QColor("#2563eb"))
+    g.setColorAt(0, QColor("#36b5a7")); g.setColorAt(1, QColor("#179789"))
     p.setPen(Qt.NoPen); p.setBrush(g)
     p.drawRoundedRect(QRectF(4, 4, 92, 92), 22, 22)
     p.setBrush(QColor(255, 255, 255, 235))

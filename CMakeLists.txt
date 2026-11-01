@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Vidline VERSION 1.12.0 LANGUAGES CXX)
+project(Vidline VERSION 1.13.0 LANGUAGES CXX)
 if(WIN32)
     enable_language(RC)
 endif()
@@ -32,6 +32,8 @@ set(VIDLINE_SOURCES
     src/videoview.cpp
     src/dialogs.h
     src/dialogs.cpp
+    src/tags.h
+    src/tags.cpp
     src/mainwindow.h
     src/mainwindow.cpp
     src/updater.h

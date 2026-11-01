@@ -35,6 +35,7 @@
 #include "timeline.h"
 #include "updater.h"
 #include "videoview.h"
+#include "tags.h"
 
 // Zeitleiste unten: Klick springt direkt an die Stelle (statt in kleinen Schritten)
 class SeekSlider : public QSlider {
@@ -68,6 +69,7 @@ public:
     void openFile(const QString& path);
     void selfShots(const QString& dir);
     void aspectShots(const QString& dir);  // Entwickler-Test: Bildformat umstellen, rendern, exportieren
+    void tagShots(const QString& dir);     // Entwickler-Test: Tags lesen und schreiben
     void fsShots(const QString& dir);      // Entwickler-Test: Vollbild-Steuerung ein-/ausblenden
 
     // EditorHost
@@ -152,6 +154,8 @@ private:
     void exitFullscreen();
     void openDialog();
     void openSettings();
+    void editTags();
+    bool saveTags(const QString& path, const AudioTags& tags);
     void fitView();
     void fitVideoItem();
     void applyCanvas();
@@ -292,6 +296,7 @@ private:
     struct AudioMeta { QString title, sub; QImage cover; bool done = false; };
     std::map<QString, AudioMeta> audioMeta_;
     QString audioShown_;  // Datei, deren Infos gerade angezeigt werden
+    QPushButton* btnTags_ = nullptr;  // nur bei Tondateien sichtbar
     QString lastSel_;
     // Bild anpassen
     QLabel *lblSize_, *lblPos_, *lblRot_;

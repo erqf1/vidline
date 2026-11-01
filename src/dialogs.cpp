@@ -14,10 +14,15 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QGridLayout>
+#include <QDragEnterEvent>
 #include <QKeyEvent>
+#include <QMimeData>
+#include <QPainter>
+#include <QPainterPath>
 #include <QScrollArea>
 #include "i18n.h"
 #include "shortcuts.h"
+#include "icons.h"
 #include "theme.h"
 
 // ---------------------------------------------------------------- Sprache (Erststart)
@@ -45,6 +50,128 @@ LanguageDialog::LanguageDialog(QWidget* parent) : QDialog(parent) {
 QString LanguageDialog::code() const { return languageCodes().value(list_->currentRow(), "en"); }
 
 // ---------------------------------------------------------------- Einstellungen
+TagDialog::TagDialog(QWidget* parent, const QString& path, const AudioTags& tags)
+    : QDialog(parent), tags_(tags), coverOk_(canEmbedCover(path)) {
+    setWindowTitle(T("tags_title"));
+    setAcceptDrops(coverOk_);
+    resize(640, 400);
+    auto* root = new QVBoxLayout(this);
+    root->setContentsMargins(20, 20, 20, 18);
+    root->setSpacing(16);
+    auto* top = new QHBoxLayout;
+    top->setSpacing(20);
+
+    auto* left = new QVBoxLayout;
+    left->setSpacing(8);
+    cover_ = new QLabel;
+    cover_->setFixedSize(220, 220);
+    left->addWidget(cover_);
+    auto* pick = new QPushButton(T("tags_pick"));
+    remove_ = new QPushButton(T("tags_remove"));
+    left->addWidget(pick);
+    left->addWidget(remove_);
+    if (!coverOk_) {
+        pick->hide();
+        remove_->hide();
+        auto* no = new QLabel(T("tags_nocover"));
+        no->setObjectName("hint");
+        no->setWordWrap(true);
+        left->addWidget(no);
+    }
+    left->addStretch();
+    top->addLayout(left);
+
+    auto* form = new QFormLayout;
+    form->setSpacing(9);
+    auto field = [&](const char* key, const QString& value) {
+        auto* e = new QLineEdit(value);
+        form->addRow(T(key), e);
+        return e;
+    };
+    title_ = field("tag_title", tags.title);
+    artist_ = field("tag_artist", tags.artist);
+    album_ = field("tag_album", tags.album);
+    albumArtist_ = field("tag_albumartist", tags.albumArtist);
+    year_ = field("tag_year", tags.year);
+    track_ = field("tag_track", tags.track);
+    genre_ = field("tag_genre", tags.genre);
+    top->addLayout(form, 1);
+    root->addLayout(top, 1);
+
+    auto* buttons = new QHBoxLayout;
+    buttons->addStretch();
+    auto* cancel = new QPushButton(T("cancel"));
+    auto* save = new QPushButton(T("tags_save"));
+    save->setObjectName("primary");
+    save->setDefault(true);
+    buttons->addWidget(cancel);
+    buttons->addWidget(save);
+    root->addLayout(buttons);
+    connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
+    connect(save, &QPushButton::clicked, this, &QDialog::accept);
+    connect(pick, &QPushButton::clicked, this, [this] {
+        const QString f = QFileDialog::getOpenFileName(this, T("tags_pick"), QString(), "*.png *.jpg *.jpeg *.bmp");
+        if (f.isEmpty()) return;
+        const QImage img(f);
+        if (img.isNull()) return;
+        tags_.coverChanged = true;
+        setCover(img);
+    });
+    connect(remove_, &QPushButton::clicked, this, [this] {
+        tags_.coverChanged = true;
+        setCover(QImage());
+    });
+    setCover(tags.cover);
+}
+
+void TagDialog::setCover(const QImage& img) {
+    tags_.cover = img;
+    remove_->setEnabled(!img.isNull());
+    const Theme& th = currentTheme();
+    QPixmap pm(cover_->size());
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    QPainterPath clip;
+    clip.addRoundedRect(QRectF(pm.rect()), 12, 12);
+    p.setClipPath(clip);
+    if (img.isNull()) {
+        p.fillRect(pm.rect(), th.panel2);
+        p.drawPixmap(QRect(78, 78, 64, 64), makeIcon(Ic::Music, th.muted).pixmap(64, 64));
+    } else {  // füllt das Quadrat, Überstehendes wird abgeschnitten
+        const QImage s = img.scaled(pm.size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+        p.drawImage((pm.width() - s.width()) / 2, (pm.height() - s.height()) / 2, s);
+    }
+    p.end();
+    cover_->setPixmap(pm);
+}
+
+AudioTags TagDialog::tags() const {
+    AudioTags t = tags_;
+    t.title = title_->text();
+    t.artist = artist_->text();
+    t.album = album_->text();
+    t.albumArtist = albumArtist_->text();
+    t.year = year_->text();
+    t.track = track_->text();
+    t.genre = genre_->text();
+    return t;
+}
+
+void TagDialog::dragEnterEvent(QDragEnterEvent* e) {
+    if (e->mimeData()->hasImage() || e->mimeData()->hasUrls()) e->acceptProposedAction();
+}
+
+void TagDialog::dropEvent(QDropEvent* e) {
+    QImage img;
+    if (e->mimeData()->hasUrls() && !e->mimeData()->urls().isEmpty()) img = QImage(e->mimeData()->urls().first().toLocalFile());
+    else if (e->mimeData()->hasImage()) img = qvariant_cast<QImage>(e->mimeData()->imageData());
+    if (img.isNull()) return;
+    tags_.coverChanged = true;
+    setCover(img);
+}
+
 SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     setMinimumWidth(380);
     auto* v = new QVBoxLayout(this);

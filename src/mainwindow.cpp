@@ -649,6 +649,10 @@ void MainWindow::buildUi() {
     seekGap_->hide();
     bar->addWidget(seekGap_, 1);
     bar->addWidget(lblTime_);
+    btnTags_ = mk("tags", "tags_tip", Ic::Music);
+    connect(btnTags_, &QPushButton::clicked, this, &MainWindow::editTags);
+    btnTags_->hide();
+    bar->addWidget(btnTags_);
     bar->addWidget(btnEdit_);
     bar->addWidget(bSet);
 
@@ -1293,6 +1297,7 @@ void MainWindow::openFile(const QString& path) {
     view_->setAmbient(QImage());  // kein Licht vom vorherigen Video
     if (s.video) {
         audioShown_.clear();
+        btnTags_->hide();
         view_->setAudioInfo(QString());
     } else {
         showAudioInfo(path);
@@ -1499,6 +1504,7 @@ void MainWindow::activate(int i, double srcPos, bool play) {
         pendingRate_ = p.speed * boost_;
         if (pr_.sources[p.src].video) {
             audioShown_.clear();
+            btnTags_->hide();
             view_->setAudioInfo(QString());
         } else {
             showAudioInfo(pr_.sources[p.src].path);
@@ -2418,6 +2424,7 @@ void MainWindow::importMedia() {
 // das Cover (falls vorhanden) als Bild. Bis es fertig ist, steht der Dateiname da.
 void MainWindow::showAudioInfo(const QString& path) {
     audioShown_ = path;
+    btnTags_->show();
     AudioMeta& m = audioMeta_[path];
     if (m.title.isEmpty()) m.title = QFileInfo(path).completeBaseName();
     view_->setAudioInfo(m.title, m.sub, m.cover);
@@ -2454,6 +2461,45 @@ void MainWindow::showAudioInfo(const QString& path) {
     // "0:v:0?": nur wenn ein Bild eingebettet ist; ohne Bild bricht ffmpeg ab, die Tags stehen trotzdem in der Ausgabe
     proc->start(ffmpegPath(), {"-hide_banner", "-y", "-i", path, "-map", "0:v:0?", "-frames:v", "1", "-an",
                                "-vf", "scale='min(800,iw)':-2", jpg});
+}
+
+void MainWindow::editTags() {
+    const QString path = audioShown_;
+    if (path.isEmpty()) return;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const AudioTags tags = readAudioTags(path);
+    QApplication::restoreOverrideCursor();
+    TagDialog d(this, path, tags);
+    if (d.exec() != QDialog::Accepted) return;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    saveTags(path, d.tags());
+    QApplication::restoreOverrideCursor();
+}
+
+// Datei freigeben, Tags schreiben, an derselben Stelle weiterspielen
+bool MainWindow::saveTags(const QString& path, const AudioTags& tags) {
+    const double at = t_;
+    const bool resume = player_->playbackState() == QMediaPlayer::PlayingState;
+    player_->stop();
+    player_->setSource(QUrl());
+    QList<QMediaPlayer*> others;
+    for (auto& [id, ap] : audioPlayers_) {
+        AudioClip* a = pr_.audio(id);
+        if (a && a->path == path) {
+            ap.p->setSource(QUrl());
+            others << ap.p;
+        }
+    }
+    QApplication::processEvents();
+    QString error;
+    const bool ok = writeAudioTags(path, tags, &error);
+    for (QMediaPlayer* p : others) p->setSource(QUrl::fromLocalFile(path));
+    audioMeta_.erase(path);
+    loadedSrc_ = -1;
+    seek(at);
+    if (pending_) pendingPlay_ = resume;
+    if (!ok) QMessageBox::critical(this, T("tags_title"), T("tags_fail") + "\n\n" + error);
+    return ok;
 }
 
 void MainWindow::addToBin(const QString& path) {
@@ -2748,9 +2794,12 @@ void MainWindow::exportVideo() {
 // Entwickler-Test: Fenster per grab() in Dateien rendern (greift nicht auf den Bildschirm zu)
 void MainWindow::selfShots(const QString& dir) {
     audio_->setMuted(true);  // Tests laufen lautlos
-    if (qEnvironmentVariableIsSet("VIDLINE_LANG")) {  // Website-Bilder in einer festen Sprache
+    if (qEnvironmentVariableIsSet("VIDLINE_LANG")) {  // Website-Bilder in fester Sprache und im Standard-Design
         setLanguage(qEnvironmentVariable("VIDLINE_LANG"));
         retranslate();
+        setCurrentTheme("mint");
+        setAccentColor(QString());
+        applyTheme();
     }
     auto shot = [this, dir](const QString& name) { grab().save(dir + "/" + name + ".png"); };
     QTimer::singleShot(3500, this, [=] {
@@ -2852,11 +2901,70 @@ void MainWindow::selfShots(const QString& dir) {
     });
 }
 
+// Entwickler-Test (lautlos, unsichtbar): Tags lesen, schreiben, wieder lesen.
+// Aufruf: Vidline <tondatei> --tagshots <ordner> <bild>
+void MainWindow::tagShots(const QString& dir) {
+    silent_ = true;
+    audio_->setMuted(true);
+    setLanguage(qEnvironmentVariable("VIDLINE_LANG", "de"));
+    retranslate();
+    const QString image = QApplication::arguments().value(4);
+    auto log = [dir](const QString& name, const QString& path) {
+        const AudioTags t = readAudioTags(path);
+        QFile f(dir + "/tags.txt");
+        f.open(QIODevice::Append | QIODevice::Text);
+        f.write(QString("%1: %2 | %3 | %4 | %5 | %6 | %7 | %8 | Cover %9\n").arg(name, t.title, t.artist, t.album, t.albumArtist, t.year, t.track, t.genre)
+                    .arg(t.cover.width()).toUtf8());
+    };
+    QTimer::singleShot(2500, this, [=] {
+        const QString path = audioShown_;
+        log("vorher", path);
+        AudioTags n;
+        n.title = QString::fromUtf8("Grüße aus Köln ✓");
+        n.artist = "Beispiel & Freunde";
+        n.album = "Erstes Album";
+        n.albumArtist = "Beispiel";
+        n.year = "2026";
+        n.track = "3";
+        n.genre = "Pop";
+        n.cover = QImage(image);
+        n.coverChanged = true;
+        TagDialog d(this, path, n);
+        d.setAttribute(Qt::WA_DontShowOnScreen);
+        d.show();
+        QApplication::processEvents();
+        d.grab().save(dir + "/tagdialog.png");
+        d.hide();
+        log(saveTags(path, n) ? "geschrieben" : "FEHLER beim Schreiben", path);
+        QTimer::singleShot(1500, this, [=] {
+            grab().save(dir + "/nachher.png");
+            AudioTags o = readAudioTags(path);
+            o.artist.clear();
+            o.title = "Nur Text geaendert";
+            log(saveTags(path, o) ? "Text geaendert, Cover bleibt" : "FEHLER beim Schreiben", path);
+            QTimer::singleShot(800, this, [=] {
+                AudioTags r = readAudioTags(path);
+                r.cover = QImage();
+                r.coverChanged = true;
+                log(saveTags(path, r) ? "Cover entfernt" : "FEHLER beim Schreiben", path);
+                QTimer::singleShot(600, qApp, &QApplication::quit);
+            });
+        });
+    });
+}
+
 // Entwickler-Test (lautlos, unsichtbar): Leiste, Leertaste halten, Spulen, Kürzen, Verschieben, Zeichnen, Formen, Ton-Datei.
 // Aufruf: Vidline <video> --fsshots <ordner> [<tondatei>]
 void MainWindow::fsShots(const QString& dir) {
     silent_ = true;
     audio_->setMuted(true);
+    if (qEnvironmentVariableIsSet("VIDLINE_LANG")) {  // Website-Bilder in fester Sprache und im Standard-Design
+        setLanguage(qEnvironmentVariable("VIDLINE_LANG"));
+        retranslate();
+        setCurrentTheme("mint");
+        setAccentColor(QString());
+        applyTheme();
+    }
     const QStringList args = QApplication::arguments();
     const QString audioFile = args.size() > 4 ? args[4] : QString();
     auto logLine = [dir](const QString& line) {
