@@ -1,7 +1,7 @@
 #pragma once
 #include <QString>
 
-// Windows: Dateisymbole (hell oder dunkel) für die Dateitypen von Cutline umschalten.
+// Windows: Dateisymbole (hell oder dunkel) für die Dateitypen von Vidline umschalten.
 // Der Installer legt je Typ eine ProgID "Cutline.<endung>" an (Symbol: hell). Hier wird nur deren DefaultIcon in HKCU
 // umgebogen - HKCU geht vor HKLM und braucht keine Adminrechte. Portable Version und andere Systeme: nichts zu tun.
 bool fileIconsAvailable();

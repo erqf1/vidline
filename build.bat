@@ -1,5 +1,5 @@
 @echo off
-rem Baut Cutline (Release) und erzeugt dist\Cutline-windows-x64.zip (portabel, mit Qt + ffmpeg).
+rem Baut Vidline (Release) und erzeugt dist\Vidline-windows-x64.zip (portabel, mit Qt + ffmpeg).
 setlocal
 set QTDIR=C:\Qt\6.8.3\msvc2022_64
 call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul || exit /b 1
@@ -12,15 +12,16 @@ set PATH=%VSCM%\Ninja;%PATH%
 if not exist build\ffmpeg.exe (
   for /f "delims=" %%F in ('python -c "import imageio_ffmpeg as i;print(i.get_ffmpeg_exe())"') do copy /y "%%F" build\ffmpeg.exe >nul
 )
-"%QTDIR%\bin\windeployqt.exe" --no-translations --no-system-d3d-compiler --no-opengl-sw build\Cutline.exe >nul
+"%QTDIR%\bin\windeployqt.exe" --no-translations --no-system-d3d-compiler --no-opengl-sw build\Vidline.exe >nul
 rem --- Paket
-if exist dist\Cutline rmdir /s /q dist\Cutline
-mkdir dist\Cutline
-"%QTDIR%\bin\windeployqt.exe" --no-translations --no-system-d3d-compiler --no-opengl-sw --dir dist\Cutline build\Cutline.exe >nul
-copy /y build\Cutline.exe dist\Cutline\ >nul
-copy /y build\ffmpeg.exe dist\Cutline\ >nul
-xcopy /e /i /y /q assets\filetypes dist\Cutline\filetypes >nul
-copy /y LICENSE dist\Cutline\ >nul 2>nul
-copy /y README.md dist\Cutline\ >nul 2>nul
-powershell -NoProfile -Command "Compress-Archive -Path dist\Cutline -DestinationPath dist\Cutline-windows-x64.zip -Force"
-echo Fertig: build\Cutline.exe und dist\Cutline-windows-x64.zip
+if exist dist\Vidline rmdir /s /q dist\Vidline
+mkdir dist\Vidline
+"%QTDIR%\bin\windeployqt.exe" --no-translations --no-system-d3d-compiler --no-opengl-sw --dir dist\Vidline build\Vidline.exe >nul
+copy /y build\Vidline.exe dist\Vidline\ >nul
+copy /y build\Cutline.exe dist\Vidline\ >nul
+copy /y build\ffmpeg.exe dist\Vidline\ >nul
+xcopy /e /i /y /q assets\filetypes dist\Vidline\filetypes >nul
+copy /y LICENSE dist\Vidline\ >nul 2>nul
+copy /y README.md dist\Vidline\ >nul 2>nul
+powershell -NoProfile -Command "Compress-Archive -Path dist\Vidline -DestinationPath dist\Vidline-windows-x64.zip -Force"
+echo Fertig: build\Vidline.exe und dist\Vidline-windows-x64.zip

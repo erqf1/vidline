@@ -42,16 +42,16 @@
 
 static constexpr double kMinPiece = 0.1;
 
-// Startzeit messen (CUTLINE_TRACE=<Datei>): wann Fenster und erstes Bild da sind
+// Startzeit messen (VIDLINE_TRACE=<Datei>): wann Fenster und erstes Bild da sind
 QElapsedTimer g_startup;
 static void trace(const QString& what) {
-    const QString file = qEnvironmentVariable("CUTLINE_TRACE");
+    const QString file = qEnvironmentVariable("VIDLINE_TRACE");
     if (file.isEmpty()) return;
     QFile f(file);
     if (f.open(QIODevice::Append | QIODevice::Text))
         f.write(QString("%1 ms  %2\n").arg(g_startup.isValid() ? g_startup.elapsed() : -1).arg(what).toUtf8());
 }
-void cutlineTrace(const char* what) { trace(QString::fromUtf8(what)); }
+void vidlineTrace(const char* what) { trace(QString::fromUtf8(what)); }
 
 enum class MediaKind { Video, Audio, Image };
 
@@ -105,7 +105,7 @@ MainWindow::MainWindow() {
     setMinimumSize(900, 600);
     setAcceptDrops(true);
     ambientClock_.start();
-    silent_ = qEnvironmentVariableIsSet("CUTLINE_MUTE");
+    silent_ = qEnvironmentVariableIsSet("VIDLINE_MUTE");
     buildUi();
     applyTheme();
     retranslate();
@@ -114,10 +114,10 @@ MainWindow::MainWindow() {
 
     // Updates: kurz nach dem Start still prüfen, fragt nur bei einer neuen (nicht ignorierten) Version
     Updater::Options uo;
-    uo.repo = "erqf1/cutline";
-    uo.appName = "Cutline";
+    uo.repo = "erqf1/vidline";
+    uo.appName = "Vidline";
     uo.version = APP_VERSION;
-    uo.innoAppId = "B7D0C3E2-5A41-4C7E-9B61-3F2A8E6D1C90";  // packaging/windows/cutline.iss
+    uo.innoAppId = "B7D0C3E2-5A41-4C7E-9B61-3F2A8E6D1C90";  // packaging/windows/vidline.iss
     uo.parent = [this] { return static_cast<QWidget*>(this); };
     uo.texts = [] {
         return UpdaterTexts{T("upd_title"), T("upd_text"), T("upd_now"), T("upd_ignore"), T("upd_later"),
@@ -125,7 +125,7 @@ MainWindow::MainWindow() {
     };
     uo.beforeInstall = [this] {
         if (undo_.empty()) return true;
-        return QMessageBox::question(this, "Cutline", T("upd_unsaved")) == QMessageBox::Yes;
+        return QMessageBox::question(this, "Vidline", T("upd_unsaved")) == QMessageBox::Yes;
     };
     updater_ = new Updater(uo, this);
     // Ton immer über das aktuelle Standardgerät ausgeben (Kopfhörer eingesteckt / Gerät gewechselt)
@@ -135,7 +135,7 @@ MainWindow::MainWindow() {
         audio_->setDevice(d);
         for (auto& [id, ap] : audioPlayers_) ap.out->setDevice(d);
     });
-    if (!qEnvironmentVariableIsSet("CUTLINE_NO_UPDATE_CHECK"))
+    if (!qEnvironmentVariableIsSet("VIDLINE_NO_UPDATE_CHECK"))
         updater_->startAutoCheck(4000);
 }
 
@@ -963,8 +963,8 @@ void MainWindow::updateFsBar() {
 }
 
 void MainWindow::retranslate() {
-    // Qt haengt unter Windows/Linux selbst " - Cutline" an (applicationDisplayName)
-    setWindowTitle(pr_.sources.isEmpty() ? QString("Cutline") : QFileInfo(pr_.sources[0].path).fileName());
+    // Qt haengt unter Windows/Linux selbst " - Vidline" an (applicationDisplayName)
+    setWindowTitle(pr_.sources.isEmpty() ? QString("Vidline") : QFileInfo(pr_.sources[0].path).fileName());
     for (const BtnSpec& s : btns_) {
         QString text = s.text ? T(s.text) : QString();
         s.b->setText(text.isEmpty() ? QString() : " " + text);
@@ -2508,7 +2508,7 @@ void MainWindow::insertFromBin(const QString& path) {
     if (mediaKindOf(path) == MediaKind::Image) return addImageFile(path);
     MediaInfo mi = probeMedia(path);
     if (!mi.ok || mi.duration <= 0) {
-        QMessageBox::warning(this, "Cutline", T("media_unreadable"));
+        QMessageBox::warning(this, "Vidline", T("media_unreadable"));
         return;
     }
     if (mi.w > 0 && mi.h > 0) addVideoFile(path, mi);
@@ -2672,7 +2672,7 @@ void MainWindow::exportVideo() {
     const QString original = pr_.sources[0].path;
     const QString finalPath = opt.outputPath();
     // Beim Ersetzen erst in eine Zwischendatei schreiben (ffmpeg liest das Original noch)
-    const QString out = replace ? QFileInfo(finalPath).dir().filePath(".cutline-export-" +
+    const QString out = replace ? QFileInfo(finalPath).dir().filePath(".vidline-export-" +
                                   QString::number(QDateTime::currentMSecsSinceEpoch()) + "." + eo.format)
                                 : finalPath;
 
@@ -2748,8 +2748,8 @@ void MainWindow::exportVideo() {
 // Entwickler-Test: Fenster per grab() in Dateien rendern (greift nicht auf den Bildschirm zu)
 void MainWindow::selfShots(const QString& dir) {
     audio_->setMuted(true);  // Tests laufen lautlos
-    if (qEnvironmentVariableIsSet("CUTLINE_LANG")) {  // Website-Bilder in einer festen Sprache
-        setLanguage(qEnvironmentVariable("CUTLINE_LANG"));
+    if (qEnvironmentVariableIsSet("VIDLINE_LANG")) {  // Website-Bilder in einer festen Sprache
+        setLanguage(qEnvironmentVariable("VIDLINE_LANG"));
         retranslate();
     }
     auto shot = [this, dir](const QString& name) { grab().save(dir + "/" + name + ".png"); };
@@ -2813,7 +2813,7 @@ void MainWindow::selfShots(const QString& dir) {
     });
     // Alle Themes einzeln (für die Website)
     QTimer::singleShot(13000, this, [=] {
-        setLanguage(qEnvironmentVariable("CUTLINE_LANG", "en"));
+        setLanguage(qEnvironmentVariable("VIDLINE_LANG", "en"));
         retranslate();
         const auto list = themes();
         for (int i = 0; i < list.size(); ++i) {
@@ -2853,7 +2853,7 @@ void MainWindow::selfShots(const QString& dir) {
 }
 
 // Entwickler-Test (lautlos, unsichtbar): Leiste, Leertaste halten, Spulen, Kürzen, Verschieben, Zeichnen, Formen, Ton-Datei.
-// Aufruf: Cutline <video> --fsshots <ordner> [<tondatei>]
+// Aufruf: Vidline <video> --fsshots <ordner> [<tondatei>]
 void MainWindow::fsShots(const QString& dir) {
     silent_ = true;
     audio_->setMuted(true);

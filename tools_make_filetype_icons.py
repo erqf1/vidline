@@ -1,6 +1,6 @@
-"""Dateisymbole für Videos und Musik, die mit Cutline geöffnet werden: Blatt mit Eselsohr und Zeilen, das Cutline-Logo
+"""Dateisymbole für Videos und Musik, die mit Vidline geöffnet werden: Blatt mit Eselsohr und Zeilen, das Vidline-Logo
 in der Mitte, darunter die Endung (mp3, mp4 ...) und ganz unten ein Streifen - je Typ in eigener Farbe, hell und dunkel.
-Welche Variante Windows zeigt, stellt man in Cutline ein (src/fileicons.cpp).
+Welche Variante Windows zeigt, stellt man in Vidline ein (src/fileicons.cpp).
 Schreibt assets/filetypes/light|dark/<endung>.ico und packaging/windows/filetypes.iss (Registry-Einträge für den Installer).
 Braucht Python 3 + Pillow und Segoe UI (Windows). Aufruf: python tools_make_filetype_icons.py"""
 import io
@@ -193,29 +193,29 @@ for variant in ('light', 'dark'):
 print(f'{len(icons)} Dateisymbole (hell + dunkel) nach {OUT}')
 
 # ---------------------------------------------------------------- Installer: Registry-Einträge
-L = ['; Erzeugt von tools_make_filetype_icons.py - nicht von Hand ändern. Wird in cutline.iss eingebunden.',
-     '; Je Dateityp eine ProgID (Cutline.mp3 ...) mit eigenem Dateisymbol. Unter "Öffnen mit" steht Cutline nur über diese',
-     '; ProgIDs - ein zusätzlicher Eintrag über Applications\\Cutline.exe würde für alle Typen das Programmsymbol zeigen.']
+L = ['; Erzeugt von tools_make_filetype_icons.py - nicht von Hand ändern. Wird in vidline.iss eingebunden.',
+     '; Je Dateityp eine ProgID (Cutline.mp3 ...) mit eigenem Dateisymbol. Unter "Öffnen mit" steht Vidline nur über diese',
+     '; ProgIDs - ein zusätzlicher Eintrag über Applications\\Vidline.exe würde für alle Typen das Programmsymbol zeigen.']
 for ext, (label, color, kind) in TYPES.items():
     L += [
         f'Root: HKA; Subkey: "Software\\Classes\\Cutline.{ext}"; ValueType: string; ValueData: "{label.upper()} ({kind})"; Flags: uninsdeletekey; Tasks: openwith',
         f'Root: HKA; Subkey: "Software\\Classes\\Cutline.{ext}\\DefaultIcon"; ValueType: string; ValueData: "{{app}}\\filetypes\\light\\{ext}.ico"; Tasks: openwith',
-        f'Root: HKA; Subkey: "Software\\Classes\\Cutline.{ext}\\shell\\open\\command"; ValueType: string; ValueData: """{{app}}\\Cutline.exe"" ""%1"""; Tasks: openwith',
+        f'Root: HKA; Subkey: "Software\\Classes\\Cutline.{ext}\\shell\\open\\command"; ValueType: string; ValueData: """{{app}}\\Vidline.exe"" ""%1"""; Tasks: openwith',
         f'Root: HKA; Subkey: "Software\\Classes\\.{ext}\\OpenWithProgids"; ValueType: string; ValueName: "Cutline.{ext}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: openwith',
-        f'Root: HKA; Subkey: "Software\\Cutline\\Capabilities\\FileAssociations"; ValueType: string; ValueName: ".{ext}"; ValueData: "Cutline.{ext}"; Tasks: openwith',
+        f'Root: HKA; Subkey: "Software\\Vidline\\Capabilities\\FileAssociations"; ValueType: string; ValueName: ".{ext}"; ValueData: "Cutline.{ext}"; Tasks: openwith',
         # aufräumen: Einträge älterer Versionen (gemeinsame ProgID, Applications-Liste)
         f'Root: HKA; Subkey: "Software\\Classes\\.{ext}\\OpenWithList\\Cutline.exe"; ValueType: none; Flags: deletekey',
         f'Root: HKA; Subkey: "Software\\Classes\\.{ext}\\OpenWithProgids"; ValueType: none; ValueName: "Cutline.{"Video" if kind == "video" else "Audio"}"; Flags: deletevalue',
-        # Cutline kann das Symbol (hell/dunkel) für den Benutzer umgestellt haben: beim Deinstallieren mit entfernen
+        # Vidline kann das Symbol (hell/dunkel) für den Benutzer umgestellt haben: beim Deinstallieren mit entfernen
         f'Root: HKCU; Subkey: "Software\\Classes\\Cutline.{ext}"; Flags: uninsdeletekey dontcreatekey',
-        # Symbol je Endung: greift, wenn der gewählte Eintrag selbst keins hat (z. B. Cutline.Video älterer Versionen -
+        # Symbol je Endung: greift, wenn der gewählte Eintrag selbst keins hat (z. B. Vidline.Video älterer Versionen -
         # sonst stünde bei jedem Video "VIDEO" statt "MP4"). Übergeordneten Schlüssel zuerst, damit er beim Deinstallieren
         # (umgekehrte Reihenfolge) erst nach DefaultIcon geprüft und nur gelöscht wird, wenn er leer ist.
         f'Root: HKA; Subkey: "Software\\Classes\\SystemFileAssociations\\.{ext}"; Flags: uninsdeletekeyifempty; Tasks: openwith',
         f'Root: HKA; Subkey: "Software\\Classes\\SystemFileAssociations\\.{ext}\\DefaultIcon"; ValueType: string; ValueData: "{{app}}\\filetypes\\light\\{ext}.ico"; Flags: uninsdeletekey; Tasks: openwith',
         f'Root: HKCU; Subkey: "Software\\Classes\\SystemFileAssociations\\.{ext}"; Flags: uninsdeletekeyifempty dontcreatekey',
         f'Root: HKCU; Subkey: "Software\\Classes\\SystemFileAssociations\\.{ext}\\DefaultIcon"; Flags: uninsdeletekey dontcreatekey',
-        # Symbol, das Cutline dem von Windows angelegten "<endung>_auto_file" gegeben hat (src/fileicons.cpp)
+        # Symbol, das Vidline dem von Windows angelegten "<endung>_auto_file" gegeben hat (src/fileicons.cpp)
         f'Root: HKCU; Subkey: "Software\\Classes\\{ext}_auto_file\\DefaultIcon"; Flags: uninsdeletekey dontcreatekey',
     ]
 L += [
@@ -228,7 +228,7 @@ for kind in ('Video', 'Audio'):
         # ohne eigenes Symbol, damit das Symbol der Endung (MP4, MP3 ...) greift
         f'Root: HKA; Subkey: "Software\\Classes\\Cutline.{kind}\\DefaultIcon"; ValueType: none; Flags: deletekey; Tasks: openwith',
         f'Root: HKCU; Subkey: "Software\\Classes\\Cutline.{kind}\\DefaultIcon"; ValueType: none; Flags: deletekey',
-        f'Root: HKA; Subkey: "Software\\Classes\\Cutline.{kind}\\shell\\open\\command"; ValueType: string; ValueData: """{{app}}\\Cutline.exe"" ""%1"""; Tasks: openwith',
+        f'Root: HKA; Subkey: "Software\\Classes\\Cutline.{kind}\\shell\\open\\command"; ValueType: string; ValueData: """{{app}}\\Vidline.exe"" ""%1"""; Tasks: openwith',
         f'Root: HKCU; Subkey: "Software\\Classes\\Cutline.{kind}"; Flags: uninsdeletekey dontcreatekey',
     ]
 open(os.path.join(ROOT, 'packaging', 'windows', 'filetypes.iss'), 'w', encoding='utf-8-sig', newline='\r\n').write('\n'.join(L) + '\n')

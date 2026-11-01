@@ -230,21 +230,5 @@ QIcon makeIcon(Ic id, const QColor& c) {
 }
 
 QPixmap makeAppPixmap(int size) {
-    QPixmap pm(size, size);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing);
-    p.scale(size / 100.0, size / 100.0);
-    QLinearGradient g(0, 0, 100, 100);
-    g.setColorAt(0, QColor("#22d3a0"));
-    g.setColorAt(1, QColor("#2563eb"));
-    p.setPen(Qt::NoPen);
-    p.setBrush(g);
-    p.drawRoundedRect(QRectF(4, 4, 92, 92), 22, 22);
-    p.setBrush(QColor(255, 255, 255, 235));
-    QPainterPath t; t.moveTo(38, 27); t.lineTo(74, 50); t.lineTo(38, 73); t.closeSubpath();
-    p.drawPath(t);
-    p.setPen(QPen(QColor(255, 255, 255, 200), 5, Qt::SolidLine, Qt::RoundCap));
-    p.drawLine(24, 20, 24, 80);
-    return pm;
+    return QPixmap(":/logo/icon.png").scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 }

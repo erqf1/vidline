@@ -100,7 +100,7 @@ const QList<QColor>& accentChoices() {
 
 // Grüner XP-Haken für Checkboxen (einmal gezeichnet, als Datei für das Stylesheet)
 static QString xpCheckImage() {
-    const QString path = QDir::temp().filePath("cutline-xp-check.png");
+    const QString path = QDir::temp().filePath("vidline-xp-check.png");
     if (!QFile::exists(path)) {
         QPixmap pm(26, 26);
         pm.fill(Qt::transparent);

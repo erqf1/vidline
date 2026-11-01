@@ -1,5 +1,5 @@
-"""Erzeugt assets/file.ico: Symbol für Videos und Musik, die mit Cutline geöffnet werden - weißes Blatt mit
-umgeknickter Ecke, das Cutline-Logo (wie makeAppPixmap() in icons.cpp) in der Mitte."""
+"""Erzeugt assets/file.ico: Symbol für Videos und Musik, die mit Vidline geöffnet werden - weißes Blatt mit
+umgeknickter Ecke, das Vidline-Logo (wie makeAppPixmap() in icons.cpp) in der Mitte."""
 import struct, sys
 from PySide6.QtCore import Qt, QRectF, QPointF, QBuffer, QIODevice, QByteArray
 from PySide6.QtGui import QGuiApplication, QImage, QPainter, QLinearGradient, QColor, QPainterPath, QPen
@@ -8,20 +8,9 @@ app = QGuiApplication(sys.argv)
 
 
 def logo(p, x, y, s):
-    """Cutline-Logo im Quadrat (x, y, s)"""
-    p.save()
-    p.translate(x, y)
-    p.scale(s / 100.0, s / 100.0)
-    g = QLinearGradient(0, 0, 100, 100)
-    g.setColorAt(0, QColor("#22d3a0")); g.setColorAt(1, QColor("#2563eb"))
-    p.setPen(Qt.NoPen); p.setBrush(g)
-    p.drawRoundedRect(QRectF(4, 4, 92, 92), 22, 22)
-    p.setBrush(QColor(255, 255, 255, 235))
-    t = QPainterPath(); t.moveTo(38, 27); t.lineTo(74, 50); t.lineTo(38, 73); t.closeSubpath()
-    p.drawPath(t)
-    p.setPen(QPen(QColor(255, 255, 255, 200), 5, Qt.SolidLine, Qt.RoundCap))
-    p.drawLine(24, 20, 24, 80)
-    p.restore()
+    """Vidline-Logo im Quadrat (x, y, s)"""
+    p.setRenderHint(QPainter.SmoothPixmapTransform)
+    p.drawImage(QRectF(x, y, s, s), QImage("assets/icon.png"))
 
 
 def draw(size):

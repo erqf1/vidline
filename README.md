@@ -1,4 +1,4 @@
-# Cutline
+# Vidline
 
 A simple, fast video editor and player. Open a video (or a music file), cut it, change the speed of parts, blur faces or text, draw on it, add shapes, drop in images, videos and music, and export.
 
@@ -23,13 +23,13 @@ Get the latest build from the [Releases page](../../releases/latest):
 
 | Platform | File |
 | --- | --- |
-| Windows (x64) installer | `Cutline-windows-x64-setup.exe` – lets you choose the install folder and adds Cutline to the **Open with** menu of videos |
-| Windows (x64) portable | `Cutline-windows-x64.zip` – unzip and run `Cutline.exe` |
-| Linux (Debian / Ubuntu) | `cutline_amd64.deb` – `sudo apt install ./cutline_amd64.deb` |
-| Linux (Arch) | `cutline-x86_64.pkg.tar.zst` – `sudo pacman -U cutline-x86_64.pkg.tar.zst` |
-| Linux (any, tar.gz) | `cutline-linux-x86_64.tar.gz` – needs Qt 6 and ffmpeg from your distro |
-| macOS Intel | `Cutline-macos-intel.dmg` |
-| macOS Apple Silicon | `Cutline-macos-apple-silicon.dmg` |
+| Windows (x64) installer | `Vidline-windows-x64-setup.exe` – lets you choose the install folder and adds Vidline to the **Open with** menu of videos |
+| Windows (x64) portable | `Vidline-windows-x64.zip` – unzip and run `Vidline.exe` |
+| Linux (Debian / Ubuntu) | `vidline_amd64.deb` – `sudo apt install ./vidline_amd64.deb` |
+| Linux (Arch) | `vidline-x86_64.pkg.tar.zst` – `sudo pacman -U vidline-x86_64.pkg.tar.zst` |
+| Linux (any, tar.gz) | `vidline-linux-x86_64.tar.gz` – needs Qt 6 and ffmpeg from your distro |
+| macOS Intel | `Vidline-macos-intel.dmg` |
+| macOS Apple Silicon | `Vidline-macos-apple-silicon.dmg` |
 
 macOS builds are not notarized. On first start, right-click the app and choose **Open**.
 
@@ -55,7 +55,7 @@ Run `publish.bat`: it asks for your GitHub username, opens the new-repository pa
 
 ## Build from source
 
-Requires Qt 6.4+ (Widgets, Multimedia, MultimediaWidgets), CMake 3.21+ and a C++17 compiler. Cutline calls `ffmpeg` for thumbnails and export; put an `ffmpeg` binary next to the executable or on your `PATH`.
+Requires Qt 6.4+ (Widgets, Multimedia, MultimediaWidgets), CMake 3.21+ and a C++17 compiler. Vidline calls `ffmpeg` for thumbnails and export; put an `ffmpeg` binary next to the executable or on your `PATH`.
 
 ```bash
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -66,6 +66,6 @@ On Windows, `build.bat` builds and creates the portable zip. Release packages fo
 
 ## License
 
-Apache License 2.0 for the Cutline source code. Release packages bundle [FFmpeg](https://ffmpeg.org) (GPL build) and [Qt](https://www.qt.io) (LGPLv3), which keep their own licenses.
+Apache License 2.0 for the Vidline source code. Release packages bundle [FFmpeg](https://ffmpeg.org) (GPL build) and [Qt](https://www.qt.io) (LGPLv3), which keep their own licenses.
 
 Bundled fonts from Google Fonts: Anton, Bangers, Bebas Neue, Creepster, Lobster, Pacifico, Press Start 2P (SIL Open Font License 1.1) and Permanent Marker (Apache License 2.0).

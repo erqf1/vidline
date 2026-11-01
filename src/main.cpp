@@ -67,7 +67,7 @@ protected:
     }
 };
 
-extern QElapsedTimer g_startup;  // mainwindow.cpp, für CUTLINE_TRACE
+extern QElapsedTimer g_startup;  // mainwindow.cpp, für VIDLINE_TRACE
 
 int main(int argc, char* argv[]) {
     g_startup.start();
@@ -78,8 +78,8 @@ int main(int argc, char* argv[]) {
 #ifdef Q_OS_LINUX
     // Linux, vor allem integrierte Grafik unter Wayland (z. B. Hyprland): Hardware-Dekodierung (VAAPI) und die
     // GPU-Umrechnung der Videobilder lassen Qt Multimedia dort oft abstürzen. Software-Dekodierung reicht für
-    // 1080p locker. Wer sie trotzdem will: CUTLINE_HW_DECODE=1. Eigene Werte der Variablen bleiben unangetastet.
-    if (qEnvironmentVariable("CUTLINE_HW_DECODE") != "1") {
+    // 1080p locker. Wer sie trotzdem will: VIDLINE_HW_DECODE=1. Eigene Werte der Variablen bleiben unangetastet.
+    if (qEnvironmentVariable("VIDLINE_HW_DECODE") != "1") {
         if (!qEnvironmentVariableIsSet("QT_FFMPEG_DECODING_HW_DEVICE_TYPES"))
             qputenv("QT_FFMPEG_DECODING_HW_DEVICE_TYPES", ",");  // gesetzt, aber leer -> keine Hardware-Geräte
         if (!qEnvironmentVariableIsSet("QT_DISABLE_HW_TEXTURES_CONVERSION"))
@@ -91,7 +91,7 @@ int main(int argc, char* argv[]) {
     // Mitgelieferte Text-Schriften erst laden, wenn man einen Text einfügt (schnellerer Start)
     QCoreApplication::setOrganizationName("WSoftware");
     QCoreApplication::setApplicationName("VideoEditor");
-    QGuiApplication::setApplicationDisplayName("Cutline");
+    QGuiApplication::setApplicationDisplayName("Vidline");
 
     QIcon appIcon;
     for (int s : {16, 24, 32, 48, 64, 128, 256}) appIcon.addPixmap(makeAppPixmap(s));
@@ -114,7 +114,7 @@ int main(int argc, char* argv[]) {
     MainWindow w;
     w.show();
     QTimer::singleShot(3000, &w, [] { syncFileIcons(); });  // Dateisymbole hell/dunkel (Windows, installiert)
-    QTimer::singleShot(0, &w, [] { extern void cutlineTrace(const char*); cutlineTrace("window shown"); });
+    QTimer::singleShot(0, &w, [] { extern void vidlineTrace(const char*); vidlineTrace("window shown"); });
     app.window = &w;
     if (!app.pending.isEmpty()) w.openFile(app.pending);
     // Argumente als Unicode lesen (Dateien aus "Oeffnen mit" koennen Sonderzeichen enthalten)

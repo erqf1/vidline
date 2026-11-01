@@ -33,26 +33,26 @@ jobs:
         run: |
           pip install imageio-ffmpeg
           $ff = python -c "import imageio_ffmpeg as i;print(i.get_ffmpeg_exe())"
-          New-Item -ItemType Directory -Path dist/Cutline | Out-Null
-          windeployqt --no-translations --no-system-d3d-compiler --no-opengl-sw --dir dist/Cutline build/Cutline.exe
-          Copy-Item build/Cutline.exe dist/Cutline/
-          Copy-Item $ff dist/Cutline/ffmpeg.exe
-          Copy-Item -Recurse assets/filetypes dist/Cutline/filetypes
-          Copy-Item LICENSE, README.md dist/Cutline/
-          Compress-Archive -Path dist/Cutline -DestinationPath Cutline-windows-x64.zip
+          New-Item -ItemType Directory -Path dist/Vidline | Out-Null
+          windeployqt --no-translations --no-system-d3d-compiler --no-opengl-sw --dir dist/Vidline build/Vidline.exe
+          Copy-Item build/Vidline.exe, build/Cutline.exe dist/Vidline/
+          Copy-Item $ff dist/Vidline/ffmpeg.exe
+          Copy-Item -Recurse assets/filetypes dist/Vidline/filetypes
+          Copy-Item LICENSE, README.md dist/Vidline/
+          Compress-Archive -Path dist/Vidline -DestinationPath Vidline-windows-x64.zip
       - name: Installer
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
           $ver = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { '0.0.0' }
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" packaging/windows/cutline.iss
-          Move-Item dist/Cutline-windows-x64-setup.exe .
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" packaging/windows/vidline.iss
+          Move-Item dist/Vidline-windows-x64-setup.exe .
       - uses: actions/upload-artifact@v4
         with:
           name: windows
           path: |
-            Cutline-windows-x64.zip
-            Cutline-windows-x64-setup.exe
+            Vidline-windows-x64.zip
+            Vidline-windows-x64-setup.exe
 
   linux:
     runs-on: ubuntu-24.04
@@ -66,7 +66,7 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
           cmake --build build
-          strip build/cutline
+          strip build/vidline
       - name: Version
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then echo "VER=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"; else echo "VER=0.0.0" >> "$GITHUB_ENV"; fi
@@ -82,29 +82,30 @@ jobs:
             echo "Architecture: amd64"
             echo "Depends: libqt6widgets6, libqt6multimedia6, libqt6multimediawidgets6, libqt6network6, ffmpeg"
             echo "Recommends: gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, gstreamer1.0-libav"
-            echo "Maintainer: Cutline <noreply@users.noreply.github.com>"
+            echo "Maintainer: Vidline <noreply@users.noreply.github.com>"
             echo "Description: Simple, fast video editor"
             echo " Cut, speed up, blur, add images, videos and music, then export."
           } > pkg/deb/DEBIAN/control
-          dpkg-deb --build --root-owner-group pkg/deb cutline_amd64.deb
+          dpkg-deb --build --root-owner-group pkg/deb vidline_amd64.deb
       - name: tar.gz package
         run: |
           python3 -m venv .venv
           .venv/bin/pip install imageio-ffmpeg
           FF=$(.venv/bin/python -c "import imageio_ffmpeg as i;print(i.get_ffmpeg_exe())")
-          D=cutline-linux-x86_64
+          D=vidline-linux-x86_64
           mkdir "$D"
-          cp build/cutline "$D/cutline"
+          cp build/vidline "$D/vidline"
+          ln -s vidline "$D/cutline"  # alter Name für Updates aus Versionen vor der Umbenennung
           cp "$FF" "$D/ffmpeg"
           chmod +x "$D/ffmpeg"
-          cp assets/icon.png assets/cutline.desktop packaging/linux/install.sh LICENSE README.md "$D/"
-          tar czf cutline-linux-x86_64.tar.gz "$D"
+          cp assets/icon.png assets/vidline.desktop packaging/linux/install.sh LICENSE README.md "$D/"
+          tar czf vidline-linux-x86_64.tar.gz "$D"
       - uses: actions/upload-artifact@v4
         with:
           name: linux
           path: |
-            cutline_amd64.deb
-            cutline-linux-x86_64.tar.gz
+            vidline_amd64.deb
+            vidline-linux-x86_64.tar.gz
 
   arch:
     runs-on: ubuntu-latest
@@ -121,7 +122,7 @@ jobs:
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then VER="${GITHUB_REF_NAME#v}"; else VER="0.0.0"; fi
           useradd -m builder
           mkdir /home/builder/pkg
-          tar czf /home/builder/pkg/cutline-src.tar.gz --exclude=.git --exclude=build --exclude=dist --exclude=docs .
+          tar czf /home/builder/pkg/vidline-src.tar.gz --exclude=.git --exclude=build --exclude=dist --exclude=docs .
           cp packaging/arch/PKGBUILD /home/builder/pkg/
           sed -i "s/^pkgver=.*/pkgver=${VER}/" /home/builder/pkg/PKGBUILD
           chown -R builder /home/builder/pkg
@@ -131,11 +132,11 @@ jobs:
             echo "::error title=makepkg failed::$(cat /tmp/tail.txt)"
             exit 1
           fi
-          cp cutline-[0-9]*-x86_64.pkg.tar.zst "$GITHUB_WORKSPACE/cutline-x86_64.pkg.tar.zst"
+          cp cutline-[0-9]*-x86_64.pkg.tar.zst "$GITHUB_WORKSPACE/vidline-x86_64.pkg.tar.zst"
       - uses: actions/upload-artifact@v4
         with:
           name: arch
-          path: cutline-x86_64.pkg.tar.zst
+          path: vidline-x86_64.pkg.tar.zst
 
   macos:
     strategy:
@@ -162,18 +163,18 @@ jobs:
           python3 -m venv .venv
           .venv/bin/pip install imageio-ffmpeg
           FF=$(.venv/bin/python -c "import imageio_ffmpeg as i;print(i.get_ffmpeg_exe())")
-          macdeployqt build/Cutline.app
-          cp "$FF" build/Cutline.app/Contents/MacOS/ffmpeg
-          chmod +x build/Cutline.app/Contents/MacOS/ffmpeg
-          codesign --force --deep -s - build/Cutline.app
+          macdeployqt build/Vidline.app
+          cp "$FF" build/Vidline.app/Contents/MacOS/ffmpeg
+          chmod +x build/Vidline.app/Contents/MacOS/ffmpeg
+          codesign --force --deep -s - build/Vidline.app
           mkdir dmg
-          cp -R build/Cutline.app dmg/
+          cp -R build/Vidline.app dmg/
           ln -s /Applications dmg/Applications
-          hdiutil create -volname Cutline -srcfolder dmg -ov -format UDZO "Cutline-macos-${{ matrix.name }}.dmg"
+          hdiutil create -volname Vidline -srcfolder dmg -ov -format UDZO "Vidline-macos-${{ matrix.name }}.dmg"
       - uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.name }}
-          path: Cutline-macos-${{ matrix.name }}.dmg
+          path: Vidline-macos-${{ matrix.name }}.dmg
 
   release:
     if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.windows.result == 'success' && needs.linux.result == 'success' && needs.macos.result == 'success' }}

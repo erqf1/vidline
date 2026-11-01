@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=Cutline
+Name=Vidline
 GenericName=Video Editor and Player
 Comment=Simple, fast video editor
-Exec=cutline %f
-Icon=cutline
+Exec=vidline %f
+Icon=vidline
 Terminal=false
 Categories=AudioVideo;Video;AudioVideoEditing;
 MimeType=video/mp4;video/quicktime;video/x-matroska;video/webm;video/x-msvideo;audio/mpeg;audio/x-wav;audio/mp4;audio/aac;audio/flac;audio/ogg;audio/opus;

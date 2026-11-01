@@ -1,16 +1,16 @@
-# Maintainer: Cutline contributors
+# Maintainer: Vidline contributors
 pkgname=cutline
 pkgver=1.0.0
 pkgrel=1
 pkgdesc="Simple, fast video editor"
 arch=('x86_64')
-url="https://github.com/OWNER/cutline"
+url="https://github.com/OWNER/vidline"
 license=('Apache-2.0')
 depends=('qt6-base' 'qt6-multimedia' 'qt6-multimedia-ffmpeg' 'ffmpeg')
 makedepends=('cmake' 'ninja')
 options=('!debug')
-# CI packt den Quellbaum als cutline-src.tar.gz. Fuer ein AUR-Paket stattdessen die Release-Quelle eintragen.
-source=("cutline-src.tar.gz")
+# CI packt den Quellbaum als vidline-src.tar.gz. Fuer ein AUR-Paket stattdessen die Release-Quelle eintragen.
+source=("vidline-src.tar.gz")
 sha256sums=('SKIP')
 
 build() {

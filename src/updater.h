@@ -28,8 +28,8 @@ class Updater : public QObject {
     Q_OBJECT
 public:
     struct Options {
-        QString repo;                      // "erqf1/cutline"
-        QString appName;                   // "Cutline"
+        QString repo;                      // "erqf1/vidline"
+        QString appName;                   // "Vidline"
         QString version;                   // installierte Version, z. B. "1.3.0"
         QStringList relaunchArgs;          // Argumente für den Neustart
         std::function<UpdaterTexts()> texts;

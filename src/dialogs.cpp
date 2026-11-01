@@ -122,7 +122,7 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     markAccent();
     update_ = new QPushButton;
     connect(update_, &QPushButton::clicked, this, &SettingsDialog::checkUpdates);
-    auto* ver = new QLabel("Cutline " APP_VERSION);
+    auto* ver = new QLabel("Vidline " APP_VERSION);
     ver->setObjectName("hint");
     auto* ur = new QHBoxLayout;
     ur->addWidget(ver);
@@ -483,7 +483,7 @@ void ExportDialog::updateEstimate() {
         // Probe-Export: 3 s aus der Mitte des Originals, gleiche Größe/Bildrate/Qualität/Encoder
         if (!source_.isEmpty() && srcDur_ > 0.5) {
             const double len = std::min(3.0, srcDur_), from = std::max(0.0, srcDur_ / 2 - len / 2);
-            const QString tmp = QDir::temp().filePath("cutline-size-probe.mp4");
+            const QString tmp = QDir::temp().filePath("vidline-size-probe.mp4");
             QStringList a = {"-hide_banner", "-v", "error", "-y", "-ss", QString::number(from, 'f', 2), "-t",
                              QString::number(len, 'f', 2), "-i", source_, "-an", "-vf",
                              QString("scale=%1:%2:force_original_aspect_ratio=decrease,pad=%1:%2:(ow-iw)/2:(oh-ih)/2,format=yuv420p")

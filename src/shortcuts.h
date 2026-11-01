@@ -3,7 +3,7 @@
 #include <QList>
 #include <QString>
 
-// Alle Tastenkürzel von Cutline an einer Stelle: Kennung, Beschriftung (Übersetzungsschlüssel), Standard.
+// Alle Tastenkürzel von Vidline an einer Stelle: Kennung, Beschriftung (Übersetzungsschlüssel), Standard.
 // Eigene Belegungen liegen in QSettings unter "shortcuts/<id>" (leer = keine Taste).
 struct ShortcutDef {
     const char* id;

@@ -48,11 +48,11 @@ static bool apply(const QString& variant) {
         // Symbol je Endung: greift, wenn der gewählte Eintrag selbst keins hat - z. B. die Sammel-ProgIDs
         // Cutline.Video/Audio älterer Versionen (sonst stünde bei jedem Video "VIDEO" statt "MP4")
         QSettings(classes + "SystemFileAssociations\\." + ext + "\\DefaultIcon", QSettings::NativeFormat).setValue("Default", path);
-        // Hat man Cutline.exe über "Andere App auswählen" gewählt, legt Windows "<endung>_auto_file" ohne Symbol an
+        // Hat man Vidline.exe über "Andere App auswählen" gewählt, legt Windows "<endung>_auto_file" ohne Symbol an
         // und der Explorer zeigt das Programmsymbol - diesem Eintrag das Dateisymbol geben
         const QString autoFile = classes + ext + "_auto_file";
         const QString cmd = QSettings(autoFile + "\\shell\\open\\command", QSettings::NativeFormat).value("Default").toString();
-        if (cmd.contains("Cutline.exe", Qt::CaseInsensitive))
+        if (cmd.contains("Vidline.exe", Qt::CaseInsensitive) || cmd.contains("Cutline.exe", Qt::CaseInsensitive))
             QSettings(autoFile + "\\DefaultIcon", QSettings::NativeFormat).setValue("Default", path);
     }
     for (const char* kind : {"Video", "Audio"})  // Sammel-ProgIDs älterer Versionen: kein eigenes Symbol (siehe oben)

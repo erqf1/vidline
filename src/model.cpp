@@ -44,7 +44,7 @@ QString ffmpegPath() {
     const QString name = "ffmpeg";
 #endif
     const QString dir = QCoreApplication::applicationDirPath();
-    for (const QString& c : {dir + "/" + name, dir + "/../lib/cutline/" + name, dir + "/../Resources/" + name})
+    for (const QString& c : {dir + "/" + name, dir + "/../lib/vidline/" + name, dir + "/../Resources/" + name})
         if (QFileInfo::exists(c)) return QFileInfo(c).absoluteFilePath();
 #ifdef Q_OS_MAC
     for (const char* c : {"/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"})
