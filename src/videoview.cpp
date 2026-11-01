@@ -35,30 +35,11 @@ void VideoView::setToolActive(bool on) {
     else viewport()->unsetCursor();
 }
 
-// Weichzeichnen: klein rechnen, dreimal Kastenfilter in beide Richtungen (beim Hochskalieren bleibt es weich)
+// Cover für den Hintergrund: so weich wie bei Windows, die Formen des Bildes bleiben erkennbar (rund 2 % der Breite)
 static QImage blurred(const QImage& src) {
-    const int n = 72;
-    QImage s = src.scaled(n, n, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-    s = s.copy((s.width() - n) / 2, (s.height() - n) / 2, n, n).convertToFormat(QImage::Format_RGB32);
-    const int r = 5;
-    for (int pass = 0; pass < 3; ++pass)
-        for (int dir = 0; dir < 2; ++dir) {
-            const QImage in = s;
-            for (int y = 0; y < n; ++y)
-                for (int x = 0; x < n; ++x) {
-                    int R = 0, G = 0, B = 0, c = 0;
-                    for (int d = -r; d <= r; ++d) {
-                        const int xx = dir == 0 ? std::clamp(x + d, 0, n - 1) : x, yy = dir == 1 ? std::clamp(y + d, 0, n - 1) : y;
-                        const QRgb v = in.pixel(xx, yy);
-                        R += qRed(v);
-                        G += qGreen(v);
-                        B += qBlue(v);
-                        ++c;
-                    }
-                    s.setPixel(x, y, qRgb(R / c, G / c, B / c));
-                }
-        }
-    return s;
+    const int n = 512;
+    const QImage s = src.scaled(n, n, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    return softBlur(s.copy((s.width() - n) / 2, (s.height() - n) / 2, n, n), 10);
 }
 
 void VideoView::setAudioInfo(const QString& title, const QString& subtitle, const QImage& cover) {
@@ -76,7 +57,7 @@ static void paintAudioBackground(QPainter* p, const QRect& vr, const QImage& blu
         p->setRenderHint(QPainter::SmoothPixmapTransform, true);
         const double side = std::max(vr.width(), vr.height()) * 1.1;  // füllt alles, Ränder des Weichzeichners außerhalb
         p->drawImage(QRectF(vr.center().x() - side / 2, vr.center().y() - side / 2, side, side), blur);
-        p->fillRect(vr, QColor(0, 0, 0, 115));
+        p->fillRect(vr, QColor(40, 40, 44, 150));  // grauer Schleier statt Schwarz: ruhig, Formen bleiben sichtbar
     } else {
         QColor a = currentTheme().accent;
         for (const auto& [x, y, al] : {std::tuple{0.78, 0.18, 46}, {0.15, 0.85, 34}, {0.45, 0.55, 18}}) {
@@ -245,6 +226,18 @@ void VideoView::drawBackground(QPainter* p, const QRectF&) {
     }
     p->fillRect(vr, currentTheme().video);
     if (currentTheme().xp && ambient_.isNull()) paintBliss(p, vr);
+    if (currentTheme().acryl && ambient_.isNull()) {
+        const QImage& smoke = acrylSmoke(currentTheme());
+        if (smoke_.size() != vr.size() || smokeKey_ != smoke.pixel(0, 0)) {
+            QPixmap pm = QPixmap::fromImage(smoke.scaled(vr.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+            QPainter shade(&pm);
+            shade.fillRect(pm.rect(), currentTheme().bg.lightness() < 128 ? QColor(0, 0, 0, 90) : QColor(255, 255, 255, 90));
+            shade.end();
+            smoke_ = pm;
+            smokeKey_ = smoke.pixel(0, 0);
+        }
+        p->drawPixmap(vr.topLeft(), smoke_);
+    }
     if (!ambient_.isNull()) {
         p->setRenderHint(QPainter::SmoothPixmapTransform, true);
         p->setOpacity(0.5);

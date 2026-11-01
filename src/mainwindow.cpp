@@ -3037,6 +3037,24 @@ void MainWindow::fsShots(const QString& dir) {
         setCurrentTheme("minimal_light");
         applyTheme();
         step("20c_minimal_light");
+        setCurrentTheme("acryl");
+        applyTheme();
+        step("20d_acryl");
+        btnEdit_->setChecked(false);
+        QEventLoop settle;  // Aufteilung der Fenster braucht einen Moment
+        QTimer::singleShot(600, &settle, &QEventLoop::quit);
+        settle.exec();
+        step("20e_acryl_ansehen");
+        btnEdit_->setChecked(true);
+        setCurrentTheme("acryl_light");
+        applyTheme();
+        step("20f_acryl_light");
+        setCurrentTheme("acryl");
+        setAccentColor("#ff7a3d");
+        applyTheme();
+        step("20g_acryl_orange");
+        setAccentColor(QString());
+        applyTheme();
         SettingsDialog d(this);
         QTimer::singleShot(300, &d, [&d, dir] { d.grab().save(dir + "/fs_21_settings.png"); d.accept(); });
         d.exec();

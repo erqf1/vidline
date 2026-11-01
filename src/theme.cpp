@@ -3,6 +3,8 @@
 #include <QPainter>
 #include <QFile>
 #include <QDir>
+#include <algorithm>
+#include <random>
 
 static QList<Theme> makeThemes() {
     auto mk = [](const char* id, const char* name, const char* bg, const char* panel, const char* panel2,
@@ -26,6 +28,16 @@ static QList<Theme> makeThemes() {
         t.yt = true;
         return t;
     };
+    // Acryl: Akzentfarbe bestimmt auch die Farbe des Rauchs, deshalb nie zwei Farbfamilien nebeneinander
+    auto acryl = [&](const char* id, const char* name, const char* bg, const char* panel, const char* panel2,
+                     const char* border, const char* text, const char* muted, const char* accent, const char* acctext,
+                     const char* tl, const char* hover) {
+        Theme t = mk(id, name, bg, panel, panel2, border, text, muted, accent, acctext, tl, "#000000", nullptr, 13, 10);
+        t.hover = QColor(hover);
+        t.video = t.bg;  // kein schwarzer Rand ums Bild
+        t.acryl = true;
+        return t;
+    };
     QList<Theme> list = {
         mk("mint", "Mint", "#0d0f14", "#151821", "#1c202b", "#2a2f3d", "#e6e8ee", "#8b90a0", "#4ade9b", "#04231a",
            "#0a0c11", "#000000"),
@@ -44,6 +56,10 @@ static QList<Theme> makeThemes() {
                 "#111111", "#141414", "#383838"),
         minimal("minimal_light", "Minimal hell / light", "#fafafa", "#ffffff", "#f0f0f0", "#e4e4e4", "#161616", "#6b6b6b",
                 "#161616", "#ffffff", "#f0f0f0", "#e4e4e4"),
+        acryl("acryl", "Acryl", "#1e2124", "#25292d", "#2f3438", "#3d4348", "#eff1f3", "#aab0b6", "#2dd4bf", "#06231f",
+              "#1b1e21", "#3b4146"),
+        acryl("acryl_light", "Acryl hell / light", "#e8ebed", "#f5f6f7", "#ffffff", "#ccd1d6", "#15191c", "#596269",
+              "#0d9488", "#ffffff", "#e2e5e8", "#d8dde1"),
         mk("xp", "Windows XP", "#ECE9D8", "#F7F6EE", "#FFFFFF", "#7F9DB9", "#000000", "#4d4d4d", "#316AC5", "#FFFFFF",
            "#FFFFFF", "#000000", "'Tahoma','Verdana','DejaVu Sans',sans-serif", 12, 3, true),
         mk("terminal", "Terminal", "#0C0C0C", "#121212", "#1A1A1A", "#3A3A3A", "#CCCCCC", "#767676", "#F2F2F2", "#0C0C0C",
@@ -111,6 +127,74 @@ static QString xpCheckImage() {
         p.end();
         pm.save(path);
     }
+    return QDir::fromNativeSeparators(path);
+}
+
+QImage softBlur(const QImage& src, int r) {
+    QImage img = src.convertToFormat(QImage::Format_RGB32);
+    const int w = img.width(), h = img.height(), c = 2 * r + 1;
+    QList<QRgb> line(std::max(w, h));
+    auto run = [&](QRgb* first, int n, int stride) {  // laufende Summe: Dauer hängt nicht vom Radius ab
+        for (int i = 0; i < n; ++i) line[i] = first[i * stride];
+        int R = 0, G = 0, B = 0;
+        for (int i = -r; i <= r; ++i) {
+            const QRgb v = line[std::clamp(i, 0, n - 1)];
+            R += qRed(v);
+            G += qGreen(v);
+            B += qBlue(v);
+        }
+        for (int i = 0; i < n; ++i) {
+            first[i * stride] = qRgb((R + r) / c, (G + r) / c, (B + r) / c);
+            const QRgb add = line[std::min(i + r + 1, n - 1)], sub = line[std::max(i - r, 0)];
+            R += qRed(add) - qRed(sub);
+            G += qGreen(add) - qGreen(sub);
+            B += qBlue(add) - qBlue(sub);
+        }
+    };
+    auto* px = reinterpret_cast<QRgb*>(img.bits());
+    const int stride = int(img.bytesPerLine() / 4);
+    for (int pass = 0; pass < 3; ++pass) {
+        for (int y = 0; y < h; ++y) run(px + y * stride, w, 1);
+        for (int x = 0; x < w; ++x) run(px + x, h, stride);
+    }
+    return img;
+}
+
+// Große weiche Wolken, immer dieselbe Form; bewusst ohne Korn, die Fläche bleibt ruhig
+static QImage makeSmoke(int hue, bool dark) {
+    if (hue >= 28 && hue <= 75) hue = 22;  // Gelb und Orange würden dunkel olivgrün, deshalb warmes Braunrot
+    const int W = 640, H = 360;
+    QImage im(W, H, QImage::Format_RGB32);
+    im.fill(dark ? QColor::fromHsl(hue, 22, 38) : QColor::fromHsl(hue, 30, 232));
+    QPainter p(&im);
+    p.setPen(Qt::NoPen);
+    std::mt19937 rnd(11);
+    auto pick = [&](int a, int b) { return a + int(rnd() % uint(b - a + 1)); };
+    for (int i = 0; i < 11; ++i) {
+        const int h2 = (hue + pick(-14, 14) + 360) % 360;
+        p.setBrush(dark ? QColor::fromHsl(h2, pick(50, 92), pick(56, 80)) : QColor::fromHsl(h2, pick(50, 90), pick(214, 226)));
+        p.drawEllipse(QRect(pick(-80, W), pick(-80, H), pick(120, 350), pick(80, 240)));
+    }
+    p.end();
+    return softBlur(im, 55);
+}
+
+const QImage& acrylSmoke(const Theme& t) {
+    static QImage img;
+    static QString key;
+    const int hue = t.accent.hslHue() < 0 || t.accent.hslSaturation() < 24 ? 205 : t.accent.hslHue();  // Grau: kühler Rauch
+    const QString k = QString("%1-%2").arg(hue).arg(t.bg.lightness() < 128 ? "d" : "l");
+    if (k != key) {
+        key = k;
+        img = makeSmoke(hue, t.bg.lightness() < 128);
+    }
+    return img;
+}
+
+static QString acrylSmokeFile(const Theme& t) {
+    const QString path = QDir::temp().filePath(
+        QString("vidline-acryl-%1%2.png").arg(acrylSmoke(t).pixelColor(0, 0).name().mid(1), t.bg.lightness() < 128 ? "d" : "l"));
+    if (!QFile::exists(path)) acrylSmoke(t).save(path);
     return QDir::fromNativeSeparators(path);
 }
 
@@ -201,6 +285,48 @@ QCheckBox::indicator { width: 16px; height: 16px; border: 2px solid @muted@; bor
 QCheckBox::indicator:checked { background: @accent@; border-color: @accent@; }
 QProgressBar { border: none; background: @panel2@; border-radius: 3px; }
 )";
+    }
+    if (t.acryl) {
+        // Acryl: Flächen lassen den Rauch durchscheinen. Aufklappendes (Listen, Menüs) bleibt deckend, das sind eigene Fenster.
+        s += R"(
+QMainWindow, QDialog { background: @bg@; border-image: url(@smoke@) 0 0 0 0 stretch stretch; }
+QWidget#root { background: transparent; }
+QFrame#card { background: @glass@; border: 1px solid @edge@; border-radius: 12px; }
+QPushButton { background: @glass2@; border: 1px solid @edge@; border-radius: 9px; padding: 7px 12px; }
+QPushButton:hover { background: @glass3@; border-color: @edge@; }
+QPushButton:pressed { background: @glass@; }
+QPushButton:checked { background: @accent@; color: @acctext@; border-color: @accent@; }
+QPushButton#primary { background: @accent@; color: @acctext@; border-color: @accent@; font-weight: 600; }
+QPushButton#primary:hover { background: @accent2@; }
+QPushButton#play { border: none; border-radius: 20px; background: @accent@; }
+QPushButton#play:hover { background: @accent2@; }
+QPushButton#paneHeader { background: transparent; border: none; padding: 2px 0; }
+QPushButton::menu-indicator { width: 0; image: none; }
+QDoubleSpinBox, QSpinBox, QComboBox, QLineEdit, QPlainTextEdit { background: @well@; border: 1px solid @edge@; border-radius: 8px; padding: 6px 9px; }
+QDoubleSpinBox:focus, QSpinBox:focus, QLineEdit:focus, QPlainTextEdit:focus { border-color: @accent@; }
+QComboBox QAbstractItemView { background: @panel@; border: 1px solid @border@; selection-background-color: @hover@; selection-color: @text@; }
+QListWidget { background: @well@; border: 1px solid @edge@; border-radius: 10px; }
+QListWidget::item:hover { background: @glass2@; }
+QListWidget::item:selected { background: @glass3@; color: @text@; }
+QGraphicsView { border-radius: 12px; }
+QScrollArea { border: 1px solid @edge@; border-radius: 12px; background: @well@; }
+QScrollArea > QWidget > QWidget { background: transparent; }
+QScrollBar::handle:horizontal, QScrollBar::handle:vertical { background: @glass3@; }
+QSlider::groove:horizontal { height: 4px; background: @edge@; border-radius: 2px; }
+QSlider::handle:horizontal { width: 14px; height: 14px; margin: -5px 0; background: @text@; border-radius: 7px; }
+QToolTip { background: @panel@; color: @text@; border: 1px solid @border@; border-radius: 6px; padding: 6px 8px; }
+QMenu { background: @panel@; border: 1px solid @border@; border-radius: 10px; padding: 6px; }
+QMenu::item { padding: 7px 26px 7px 12px; color: @text@; border-radius: 6px; }
+QMenu::item:selected { background: @hover@; }
+QProgressBar { background: @well@; border: 1px solid @edge@; border-radius: 6px; }
+)";
+        const bool dark = t.bg.lightness() < 128;
+        s.replace("@smoke@", acrylSmokeFile(t));
+        s.replace("@glass3@", dark ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.92)");
+        s.replace("@glass2@", dark ? "rgba(255,255,255,0.09)" : "rgba(255,255,255,0.66)");
+        s.replace("@glass@", dark ? "rgba(255,255,255,0.055)" : "rgba(255,255,255,0.46)");
+        s.replace("@edge@", dark ? "rgba(255,255,255,0.11)" : "rgba(0,0,0,0.10)");
+        s.replace("@well@", dark ? "rgba(0,0,0,0.30)" : "rgba(255,255,255,0.56)");
     }
     if (t.xp) {
         // Windows XP "Luna": blaue Taskleiste, grüner Start-Knopf, blaues Aufgabenfenster, Luna-Scrollbalken

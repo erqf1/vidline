@@ -158,7 +158,7 @@ void Timeline::paintEvent(QPaintEvent* ev) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
     const Theme& th = currentTheme();
-    p.fillRect(rect(), th.timeline);
+    if (!th.acryl) p.fillRect(rect(), th.timeline);  // Acryl: Fläche kommt aus dem Stylesheet, der Rauch scheint durch
     Project& pr = host_->pr();
     const double sc = pps(), total = pr.total();
     const QRect vis = ev->rect();

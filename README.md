@@ -14,7 +14,7 @@ A simple, fast video editor and player. Open a video (or a music file), cut it, 
 - **Sensible export.** MP4, MOV, MKV, GIF or audio only (MP3, WAV, M4A). Pick resolution (4K … SD), frame rate and quality – only values up to the original are offered.
 - **Checks for updates** and installs them on request (or ignore a version).
 - **Fullscreen** with `F11`, click the video to pause, arrow keys jump 5 seconds.
-- **12 languages** and ten themes: Mint, Studio, Ocean, Violet, Sunset, Light, the calm Minimal style (dark and light), Windows XP Luna and Terminal – plus any accent color you like.
+- **12 languages** and twelve themes: Mint, Studio, Ocean, Violet, Sunset, Light, the calm Minimal style (dark and light), Acrylic (smoke in your accent colour and matte glass, dark and light), Windows XP Luna and Terminal – plus any accent color you like.
 - Uses your GPU encoder when available (NVENC, Quick Sync, AMF, VideoToolbox), otherwise x264.
 
 ## Download

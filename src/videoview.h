@@ -1,6 +1,7 @@
 #pragma once
 #include <QGraphicsView>
 #include <QImage>
+#include <QPixmap>
 
 // Videoansicht: weiches "Ambient"-Licht in den freien Rändern, Klick auf leeres Video = Pause/Play.
 // Mit aktivem Werkzeug (Zeichnen / Form) gehen alle Mausbewegungen an das Werkzeug statt an die Elemente.
@@ -33,6 +34,8 @@ private:
     QImage ambient_;
     QString audioTitle_, audioSub_;
     QImage cover_, coverBlur_;
+    QPixmap smoke_;  // Acryl: Hintergrund passend zur Größe, damit das Video flüssig bleibt
+    QRgb smokeKey_ = 0;
     bool pressOnEmpty_ = false, tool_ = false, toolDown_ = false;
     QPoint pressPos_;
 };

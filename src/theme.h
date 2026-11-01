@@ -1,5 +1,6 @@
 #pragma once
 #include <QColor>
+#include <QImage>
 #include <QList>
 #include <QString>
 
@@ -12,6 +13,7 @@ struct Theme {
     int radius = 8;
     bool xp = false;
     bool yt = false;   // Stil Minimal: runde Knöpfe ohne Rahmen; ausgewählt = Textfarbe als Fläche
+    bool acryl = false;  // Stil Acryl: rauchiger Hintergrund, Flächen wie mattes Glas
 };
 
 const QList<Theme>& themes();
@@ -22,6 +24,10 @@ void setAccentColor(const QString& color);
 QString accentColor();
 const QList<QColor>& accentChoices();
 QString buildStyleSheet(const Theme& t);
+// Weichzeichnen: dreimal Kastenfilter in beide Richtungen, Radius r in Pixeln
+QImage softBlur(const QImage& src, int r);
+// Rauchiger Hintergrund des Stils Acryl, in der Farbfamilie der Akzentfarbe
+const QImage& acrylSmoke(const Theme& t);
 
 // Feste Farben für Timeline-Elemente (in jedem Theme gut lesbar)
 inline QColor blurColor() { return QColor("#e8912d"); }
