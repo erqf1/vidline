@@ -9,8 +9,19 @@ app = QGuiApplication(sys.argv)
 
 def logo(p, x, y, s):
     """Vidline-Logo im Quadrat (x, y, s)"""
-    p.setRenderHint(QPainter.SmoothPixmapTransform)
-    p.drawImage(QRectF(x, y, s, s), QImage("assets/icon.png"))
+    p.save()
+    p.translate(x, y)
+    p.scale(s / 100.0, s / 100.0)
+    g = QLinearGradient(0, 0, 100, 100)
+    g.setColorAt(0, QColor("#22d3a0")); g.setColorAt(1, QColor("#2563eb"))
+    p.setPen(Qt.NoPen); p.setBrush(g)
+    p.drawRoundedRect(QRectF(4, 4, 92, 92), 22, 22)
+    p.setBrush(QColor(255, 255, 255, 235))
+    t = QPainterPath(); t.moveTo(38, 27); t.lineTo(74, 50); t.lineTo(38, 73); t.closeSubpath()
+    p.drawPath(t)
+    p.setPen(QPen(QColor(255, 255, 255, 200), 5, Qt.SolidLine, Qt.RoundCap))
+    p.drawLine(24, 20, 24, 80)
+    p.restore()
 
 
 def draw(size):

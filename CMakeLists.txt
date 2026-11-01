@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Vidline VERSION 1.11.1 LANGUAGES CXX)
+project(Vidline VERSION 1.11.2 LANGUAGES CXX)
 if(WIN32)
     enable_language(RC)
 endif()
@@ -41,7 +41,6 @@ set(VIDLINE_SOURCES
     src/textrender.h
     src/textrender.cpp
     assets/fonts.qrc
-    assets/logo.qrc
     assets/denoise.qrc
 )
 
