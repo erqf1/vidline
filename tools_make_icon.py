@@ -24,9 +24,6 @@ def master():
     im = im.filter(ImageFilter.GaussianBlur(170))
     # Tönung wie beim Acryl: alles etwas dunkler und ruhiger
     im = Image.blend(im, Image.new('RGB', (S, S), (30, 28, 34)), .26)
-    # feines Korn, das macht den Unterschied zu einem glatten Verlauf
-    noise = Image.effect_noise((S, S), 30).convert('RGB')
-    im = Image.blend(im, ImageChops.overlay(im, noise), .32)
 
     out = Image.new('RGBA', (S, S), (0, 0, 0, 0))
     box = (41, 41, 983, 983)
