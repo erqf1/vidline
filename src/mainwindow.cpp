@@ -34,13 +34,48 @@
 #include <QLineEdit>
 #include <QTextEdit>
 #include <QAbstractSpinBox>
+#include <QRandomGenerator>
+#include <QShortcut>
 #include "dialogs.h"
+#include "music.h"
+#include "plugins.h"
 #include "shortcuts.h"
 #include "i18n.h"
 #include "textrender.h"
 #include "theme.h"
 
 static constexpr double kMinPiece = 0.1;
+
+// Qt 6.8 spielt MP3s mit eingebettetem Cover nicht ab, die Zeit bleibt bei 0 stehen. Dann spielt der Player eine
+// Kopie ohne Bild: nur umverpackt, der Ton bleibt Bit für Bit gleich. Die letzten paar Kopien bleiben liegen.
+static bool mp3HasPicture(const QString& path) {
+    if (QFileInfo(path).suffix().compare("mp3", Qt::CaseInsensitive) != 0) return false;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    const QByteArray head = f.read(10);
+    if (head.size() < 10 || !head.startsWith("ID3")) return false;
+    const auto* b = reinterpret_cast<const unsigned char*>(head.constData());
+    const qint64 size = (qint64(b[6] & 0x7f) << 21) | (qint64(b[7] & 0x7f) << 14) | (qint64(b[8] & 0x7f) << 7) | qint64(b[9] & 0x7f);
+    const QByteArray tag = f.read(std::min<qint64>(size, 64 * 1024 * 1024));
+    return tag.contains("APIC") || (b[3] == 2 && tag.contains("PIC"));
+}
+
+static QUrl playUrl(const QString& path) {
+    if (!mp3HasPicture(path)) return QUrl::fromLocalFile(path);
+    static QTemporaryDir dir;
+    static QList<QPair<QString, QString>> copies;  // Schlüssel (Pfad, Größe, Datum), Kopie
+    const QFileInfo fi(path);
+    const QString key = path + "|" + QString::number(fi.size()) + "|" + QString::number(fi.lastModified().toMSecsSinceEpoch());
+    for (const auto& c : copies)
+        if (c.first == key && QFileInfo::exists(c.second)) return QUrl::fromLocalFile(c.second);
+    const QString out = dir.filePath(QString("%1.mp3").arg(qHash(key), 0, 16));
+    QProcess p;
+    p.start(ffmpegPath(), {"-hide_banner", "-v", "error", "-nostdin", "-y", "-i", path, "-map", "0:a:0", "-c", "copy", "-map_metadata", "-1", out});
+    if (!p.waitForFinished(15000) || p.exitCode() != 0 || QFileInfo(out).size() == 0) return QUrl::fromLocalFile(path);
+    copies.append({key, out});
+    while (copies.size() > 6) QFile::remove(copies.takeFirst().second);
+    return QUrl::fromLocalFile(out);
+}
 
 // Startzeit messen (VIDLINE_TRACE=<Datei>): wann Fenster und erstes Bild da sind
 QElapsedTimer g_startup;
@@ -643,12 +678,37 @@ void MainWindow::buildUi() {
     slider_->setRange(0, 10000);
     slider_->setFocusPolicy(Qt::NoFocus);
     wireSeekSlider(slider_);
+    // Musik-Plugin: Bibliothek, vor/zurück, Zufall, Wiederholen (nur sichtbar, wenn es gebraucht wird)
+    btnLib_ = mk(nullptr, "lib_open_tip", Ic::Library);
+    btnLib_->setCheckable(true);
+    btnLib_->setChecked(QSettings().value("music/open", true).toBool());
+    connect(btnLib_, &QPushButton::toggled, this, [this](bool on) {
+        QSettings().setValue("music/open", on);
+        applyLayoutVisibility();
+    });
+    btnPrev_ = mk(nullptr, "prev_tip", Ic::Prev);
+    connect(btnPrev_, &QPushButton::clicked, this, &MainWindow::prevTrack);
+    btnNext_ = mk(nullptr, "next_tip", Ic::Next);
+    connect(btnNext_, &QPushButton::clicked, this, [this] { nextTrack(true); });
+    btnShuffle_ = mk(nullptr, "shuffle_tip", Ic::Shuffle);
+    btnShuffle_->setCheckable(true);
+    btnShuffle_->setChecked(QSettings().value("music/shuffle", false).toBool());
+    connect(btnShuffle_, &QPushButton::toggled, this, &MainWindow::setShuffle);
+    btnRepeat_ = mk(nullptr, "repeat_tip", Ic::Repeat);
+    btnRepeat_->setCheckable(true);
+    connect(btnRepeat_, &QPushButton::clicked, this, [this] { setRepeat((repeat_ + 1) % 3); });
+    for (QPushButton* b : {btnPrev_, btnNext_, btnShuffle_, btnRepeat_}) b->hide();
+    bar->addWidget(btnLib_);
+    bar->addWidget(btnPrev_);
     bar->addWidget(btnPlay_);
+    bar->addWidget(btnNext_);
     bar->addWidget(slider_, 1);
     seekGap_ = new QWidget;  // beim Bearbeiten statt der Leiste: dort spult man über die Zeitleiste
     seekGap_->hide();
     bar->addWidget(seekGap_, 1);
     bar->addWidget(lblTime_);
+    bar->addWidget(btnShuffle_);
+    bar->addWidget(btnRepeat_);
     btnTags_ = mk("tags", "tags_tip", Ic::Music);
     connect(btnTags_, &QPushButton::clicked, this, &MainWindow::editTags);
     btnTags_->hide();
@@ -761,13 +821,35 @@ void MainWindow::buildUi() {
             st.setValue("layout/v", vSplit_->saveState());
             fitView();
         });
+    lib_ = new MusicLibrary(this);
+    musicPanel_ = new MusicPanel(lib_);
+    connect(musicPanel_, &MusicPanel::play, this, &MainWindow::playList);
+    connect(musicPanel_, &MusicPanel::playNext, this, [this](const QStringList& p) { queueInsert(p, true); });
+    connect(musicPanel_, &MusicPanel::enqueue, this, [this](const QStringList& p) { queueInsert(p, false); });
+    connect(musicPanel_, &MusicPanel::downloadRequested, this, [this] {
+        DownloadDialog dlg(lib_, this);
+        dlg.exec();
+    });
+    musicSplit_ = new QSplitter(Qt::Horizontal);
+    musicSplit_->setChildrenCollapsible(false);
+    musicSplit_->setHandleWidth(10);
+    musicSplit_->addWidget(musicPanel_);
+    musicSplit_->addWidget(vSplit_);
+    musicSplit_->setStretchFactor(0, 0);
+    musicSplit_->setStretchFactor(1, 1);
+    musicSplit_->setSizes({340, 940});
+    musicSplit_->restoreState(QSettings().value("layout/music").toByteArray());
+    connect(musicSplit_, &QSplitter::splitterMoved, this, [this] {
+        QSettings().setValue("layout/music", musicSplit_->saveState());
+        fitView();
+    });
     auto* root = new QWidget;
     root->setObjectName("root");
     rootLayout_ = new QVBoxLayout(root);
     rootLayout_->setContentsMargins(14, 12, 14, 14);
     rootLayout_->setSpacing(10);
     rootLayout_->addWidget(topbar_);
-    rootLayout_->addWidget(vSplit_, 1);
+    rootLayout_->addWidget(musicSplit_, 1);
     setCentralWidget(root);
 
     // Vollbild-Knopf direkt im Video (unten rechts)
@@ -864,6 +946,15 @@ void MainWindow::buildUi() {
     });
     osd_ = new Osd(view_);
     applyShortcuts();
+    // Medientasten der Tastatur
+    auto media = [this](Qt::Key key, std::function<void()> fn) {
+        auto* s = new QShortcut(QKeySequence(key), this);
+        connect(s, &QShortcut::activated, this, [fn] { fn(); });
+    };
+    media(Qt::Key_MediaNext, [this] { nextTrack(true); });
+    media(Qt::Key_MediaPrevious, [this] { prevTrack(); });
+    media(Qt::Key_MediaTogglePlayPause, [this] { togglePlay(); });
+    media(Qt::Key_MediaPlay, [this] { togglePlay(); });
 }
 
 void MainWindow::addShortcut(const QString& id, std::function<void()> fn) {
@@ -919,6 +1010,8 @@ void MainWindow::applyTheme() {
     view_->viewport()->update();
     timeline_->update();
     for (Overlay* ov : overlays_) ov->update();
+    if (musicPanel_) musicPanel_->retranslate();  // Platzhalter-Cover in den neuen Farben
+    setRepeat(repeat_);
 }
 
 void MainWindow::updatePlayIcon() {
@@ -1014,6 +1107,7 @@ void MainWindow::retranslate() {
     placeVideoControls();
     fitToolLabels();
     timeline_->update();
+    if (musicPanel_) musicPanel_->retranslate();
 }
 
 void MainWindow::fitToolLabels() {
@@ -1171,6 +1265,10 @@ void MainWindow::applyLayoutVisibility() {
     editBottom_->setVisible(!fullscreen_ && edit);
     inspCard_->setVisible(!fullscreen_ && edit);
     mediaCard_->setVisible(!fullscreen_ && edit);
+    const bool music = pluginEnabled("music");
+    musicPanel_->setVisible(music && btnLib_->isChecked() && !edit && !fullscreen_);
+    btnLib_->setVisible(music && !edit);
+    updateQueueButtons();
     if (fullscreen_) {
         rootLayout_->setContentsMargins(0, 0, 0, 0);
         rootLayout_->setSpacing(0);
@@ -1253,6 +1351,7 @@ void MainWindow::openSettings() {
         retranslate();
     });
     connect(&dlg, &SettingsDialog::checkUpdates, this, [this] { updater_->check(true); });
+    connect(&dlg, &SettingsDialog::openPlugins, this, &MainWindow::openPlugins);
     connect(&dlg, &SettingsDialog::themeChanged, this, [this](const QString& id) {
         setCurrentTheme(id);
         QSettings().setValue("theme", id);
@@ -1268,6 +1367,15 @@ void MainWindow::openSettings() {
 
 void MainWindow::openFile(const QString& path) {
     trace("openFile");
+    ++opened_;
+    // Eine Datei von außen beendet die Warteschlange der Musik
+    if (!fromQueue_) {
+        queue_.clear();
+        order_.clear();
+        queuePos_ = -1;
+        autoPlay_ = false;
+    }
+    fromQueue_ = false;
     player_->stop();
     for (auto& [id, ap] : audioPlayers_) { ap.p->stop(); ap.p->deleteLater(); ap.out->deleteLater(); }
     audioPlayers_.clear();
@@ -1310,7 +1418,7 @@ void MainWindow::openFile(const QString& path) {
         applyCanvas();
     }
     player_->setSource(QUrl());  // dieselbe Datei nochmal öffnen: sonst lädt der Player sie nicht neu
-    player_->setSource(QUrl::fromLocalFile(path));
+    player_->setSource(playUrl(path));
     player_->pause();  // erstes Bild sofort anzeigen
     // Erst das Video, alles fürs Bearbeiten (Wellenform, Vorschaubilder) später bzw. erst im Bearbeiten-Modus
     addToBin(path);
@@ -1320,6 +1428,8 @@ void MainWindow::openFile(const QString& path) {
     timeline_->relayout();
     barShown_ = false;
     showBar();
+    if (musicPanel_) musicPanel_->setNowPlaying(path);
+    updateQueueButtons();
 }
 
 void MainWindow::onDuration(qint64 ms) {
@@ -1329,6 +1439,10 @@ void MainWindow::onDuration(qint64 ms) {
         pr_.pieces = {Piece{0, 0.0, ms / 1000.0, 1.0}};
         timeline_->relayout();
         updateUi();
+        if (autoPlay_) {  // aus der Musikbibliothek: gleich losspielen
+            autoPlay_ = false;
+            player_->play();
+        }
         // Vorschaubilder (für das Bild beim Spulen) erst, wenn das Video schon läuft
         const QString path = pr_.sources[0].path;
         QTimer::singleShot(editData_ ? 100 : 1500, this, [this, path] {
@@ -1418,6 +1532,8 @@ void MainWindow::setAspect(int aspect) {
 }
 
 void MainWindow::onStatus(QMediaPlayer::MediaStatus st) {
+    // Der Player hält am Dateiende oft schon an, bevor tick() das Ende sieht
+    if (st == QMediaPlayer::EndOfMedia && !pr_.pieces.isEmpty() && cur_ + 1 >= int(pr_.pieces.size())) trackEnded();
     if (st == QMediaPlayer::LoadedMedia || st == QMediaPlayer::BufferedMedia) {
         onNativeSize(vitem_->nativeSize());
         if (pending_) {
@@ -1509,7 +1625,7 @@ void MainWindow::activate(int i, double srcPos, bool play) {
         } else {
             showAudioInfo(pr_.sources[p.src].path);
         }
-        player_->setSource(QUrl::fromLocalFile(pr_.sources[p.src].path));
+        player_->setSource(playUrl(pr_.sources[p.src].path));
         player_->pause();
         ++posSets_;
         return;
@@ -1699,6 +1815,7 @@ void MainWindow::tick() {
         t_ = pr_.total();
         updateUi();
         showBar();  // zu Ende: Leiste zeigen
+        trackEnded();
         return;
     }
     t_ = pr_.outStart(cur_) + std::max(0.0, src - p->start) / p->speed;
@@ -1747,7 +1864,7 @@ void MainWindow::syncAudioPlayers() {
         ap.p->setAudioOutput(ap.out);
         ap.out->setMuted(silent_);
         ap.p->setPlaybackRate(boost_);
-        ap.p->setSource(QUrl::fromLocalFile(a.path));
+        ap.p->setSource(playUrl(a.path));
         audioPlayers_[a.id] = ap;
     }
 }
@@ -2493,12 +2610,13 @@ bool MainWindow::saveTags(const QString& path, const AudioTags& tags) {
     QApplication::processEvents();
     QString error;
     const bool ok = writeAudioTags(path, tags, &error);
-    for (QMediaPlayer* p : others) p->setSource(QUrl::fromLocalFile(path));
+    for (QMediaPlayer* p : others) p->setSource(playUrl(path));
     audioMeta_.erase(path);
     loadedSrc_ = -1;
     seek(at);
     if (pending_) pendingPlay_ = resume;
     if (!ok) QMessageBox::critical(this, T("tags_title"), T("tags_fail") + "\n\n" + error);
+    if (ok && lib_) lib_->refresh(path);
     return ok;
 }
 
@@ -3216,4 +3334,398 @@ void MainWindow::aspectShots(const QString& dir) {
         shot("aspect_undo");
         QApplication::quit();
     });
+}
+
+// ---------------------------------------------------------------- Musik-Plugin: Warteschlange
+void MainWindow::openPlugins() {
+    PluginDialog dlg(this);
+    connect(&dlg, &PluginDialog::changed, this, [this] { applyLayoutVisibility(); });
+    dlg.exec();
+}
+
+void MainWindow::playList(const QStringList& paths, int index) {
+    if (paths.isEmpty()) return;
+    queue_ = paths;
+    index = std::clamp(index, 0, int(queue_.size()) - 1);
+    if (btnShuffle_->isChecked()) {
+        shuffleOrder(index);
+    } else {
+        order_.clear();
+        for (int i = 0; i < queue_.size(); ++i) order_.push_back(i);
+        queuePos_ = index;
+    }
+    playAt(queuePos_);
+}
+
+// Gemischt: keepFirst (Index in queue_) spielt zuerst, der Rest zufällig; -1 = alles mischen
+void MainWindow::shuffleOrder(int keepFirst) {
+    std::vector<int> rest;
+    for (int i = 0; i < queue_.size(); ++i)
+        if (i != keepFirst) rest.push_back(i);
+    std::shuffle(rest.begin(), rest.end(), *QRandomGenerator::global());
+    order_.clear();
+    if (keepFirst >= 0) order_.push_back(keepFirst);
+    order_.insert(order_.end(), rest.begin(), rest.end());
+    queuePos_ = 0;
+}
+
+void MainWindow::playAt(int pos) {
+    // fehlende Dateien überspringen
+    for (int tries = 0; tries < int(order_.size()); ++tries) {
+        if (pos < 0 || pos >= int(order_.size())) return;
+        if (QFileInfo::exists(queue_[order_[pos]])) break;
+        ++pos;
+    }
+    if (pos < 0 || pos >= int(order_.size())) return;
+    queuePos_ = pos;
+    if (btnEdit_->isChecked()) btnEdit_->setChecked(false);
+    fromQueue_ = true;
+    autoPlay_ = true;
+    openFile(queue_[order_[pos]]);
+}
+
+void MainWindow::nextTrack(bool manual) {
+    if (order_.empty()) return;
+    if (!manual && repeat_ == 2) {
+        playAt(queuePos_);
+        return;
+    }
+    int pos = queuePos_ + 1;
+    if (pos >= int(order_.size())) {
+        if (repeat_ == 0) return;  // Ende der Liste
+        if (btnShuffle_->isChecked()) shuffleOrder(-1);
+        pos = 0;
+    }
+    playAt(pos);
+}
+
+// Wie bei jedem Player: nach ein paar Sekunden erst an den Anfang des Songs, sonst zum vorigen
+void MainWindow::prevTrack() {
+    if (order_.empty()) return;
+    if (t_ > 3 || queuePos_ <= 0) {
+        seek(0);
+        return;
+    }
+    playAt(queuePos_ - 1);
+}
+
+void MainWindow::queueInsert(const QStringList& paths, bool next) {
+    if (paths.isEmpty()) return;
+    if (order_.empty()) {
+        playList(paths, 0);
+        return;
+    }
+    int at = next ? queuePos_ + 1 : int(order_.size());
+    for (const QString& p : paths) {
+        queue_ << p;
+        order_.insert(order_.begin() + at++, int(queue_.size()) - 1);
+    }
+    updateQueueButtons();
+}
+
+void MainWindow::setShuffle(bool on) {
+    QSettings().setValue("music/shuffle", on);
+    if (order_.empty() || queuePos_ < 0) return;
+    const int cur = order_[queuePos_];
+    if (on) {
+        shuffleOrder(cur);
+    } else {
+        order_.clear();
+        for (int i = 0; i < queue_.size(); ++i) order_.push_back(i);
+        queuePos_ = cur;
+    }
+}
+
+void MainWindow::setRepeat(int mode) {
+    repeat_ = mode;
+    btnRepeat_->setChecked(mode > 0);
+    const Ic ic = mode == 2 ? Ic::RepeatOne : Ic::Repeat;
+    for (BtnSpec& s : btns_)
+        if (s.b == btnRepeat_) s.icon = ic;
+    const Theme& th = currentTheme();
+    btnRepeat_->setIcon(themedIcon(ic, th.text, th.yt ? th.bg : th.accentText));
+}
+
+// Song zu Ende: aus der Warteschlange weiter (einmal, auch wenn tick() und der Player es beide melden)
+void MainWindow::trackEnded() {
+    if (endPending_ || queuePos_ < 0 || btnEdit_->isChecked() || !pluginEnabled("music")) return;
+    endPending_ = true;
+    QTimer::singleShot(0, this, [this] {
+        endPending_ = false;
+        nextTrack(false);
+    });
+}
+
+void MainWindow::updateQueueButtons() {
+    const bool q = pluginEnabled("music") && !btnEdit_->isChecked() && !order_.empty();
+    const bool several = q && order_.size() > 1;
+    btnPrev_->setVisible(several);
+    btnNext_->setVisible(several);
+    btnShuffle_->setVisible(several);
+    btnRepeat_->setVisible(q);
+}
+
+// Entwickler-Test (lautlos, unsichtbar): Musik-Plugin mit selbst erzeugten Songs.
+// Aufruf: VIDLINE_SETTINGS=<ordner> VIDLINE_DATA=<ordner> Vidline --musicshots <ordner>
+void MainWindow::musicShots(const QString& dir) {
+    silent_ = true;
+    audio_->setMuted(true);
+    auto results = std::make_shared<QStringList>();
+    auto check = [results](const QString& name, bool ok, const QString& info = QString()) {
+        *results << QString("%1 %2%3").arg(ok ? "ok  " : "FEHL", name, info.isEmpty() ? QString() : " (" + info + ")");
+    };
+    auto done = [dir, results] {
+        int fails = 0;
+        for (const QString& r : *results) fails += r.startsWith("FEHL");
+        QFile f(dir + "/musik-ergebnis.txt");
+        f.open(QIODevice::WriteOnly | QIODevice::Text);
+        f.write((results->join('\n') + QString("\n%1 Prüfungen, %2 fehlgeschlagen\n").arg(results->size()).arg(fails)).toUtf8());
+        f.close();
+        QTimer::singleShot(300, qApp, &QApplication::quit);
+    };
+    // wartet, bis cond stimmt (höchstens ms), dann then(erfüllt)
+    auto waitFor = std::make_shared<std::function<void(std::function<bool()>, int, std::function<void(bool)>)>>();
+    *waitFor = [this, waitFor](std::function<bool()> cond, int ms, std::function<void(bool)> then) {
+        if (cond()) return then(true);
+        if (ms <= 0) return then(false);
+        QTimer::singleShot(100, this, [=] { (*waitFor)(cond, ms - 100, then); });
+    };
+    auto shot = [this, dir](const QString& name) {
+        QApplication::processEvents();
+        grab().save(dir + "/" + name + ".png");
+    };
+
+    // ---- Songs erzeugen: Sinustöne mit Angaben und Cover
+    const QString src = dir + "/songs";
+    QDir(src).removeRecursively();
+    QDir().mkpath(src);
+    auto coverImg = [&](const QString& file, QColor a, QColor b) {
+        QImage im(300, 300, QImage::Format_RGB32);
+        QPainter p(&im);
+        QLinearGradient g(0, 0, 300, 300);
+        g.setColorAt(0, a);
+        g.setColorAt(1, b);
+        p.fillRect(im.rect(), g);
+        p.end();
+        im.save(file);
+    };
+    coverImg(src + "/a.png", QColor("#f97316"), QColor("#7c3aed"));
+    coverImg(src + "/b.png", QColor("#0ea5e9"), QColor("#14532d"));
+    auto make = [&](const QString& name, double secs, int freq, const QStringList& meta, const QString& cover, const QString& codec) {
+        QStringList a{"-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i", QString("sine=frequency=%1:duration=%2").arg(freq).arg(secs)};
+        if (!cover.isEmpty()) a << "-i" << cover << "-map" << "0" << "-map" << "1" << "-c:v" << "mjpeg" << "-disposition:v" << "attached_pic";
+        a << "-c:a" << codec;
+        for (const QString& m : meta) a << "-metadata" << m;
+        if (codec == "libmp3lame") a << "-id3v2_version" << "3";
+        a << src + "/" + name;
+        QProcess p;
+        p.start(ffmpegPath(), a);
+        p.waitForFinished(30000);
+        return src + "/" + name;
+    };
+    const QString s1 = make("Sonnenaufgang.mp3", 3, 330, {"title=Sonnenaufgang", "artist=Nordlicht", "album=Morgen", "track=1"}, src + "/a.png", "libmp3lame");
+    const QString s2 = make("Mittag.mp3", 3, 392, {"title=Mittag", "artist=Nordlicht", "album=Morgen", "track=2"}, src + "/a.png", "libmp3lame");
+    const QString s3 = make("Abend.flac", 3, 440, {QString::fromUtf8("title=Abendrot über Köln"), "artist=Nordlicht", "album=Morgen", "track=3"}, src + "/a.png", "flac");
+    const QString s4 = make("Regen.mp3", 2, 262, {"title=Regen", "artist=Wolkenband", "album=Wetter", "track=1"}, src + "/b.png", "libmp3lame");
+    const QString s5 = make("Gewitter.m4a", 2, 294, {"title=Gewitter", "artist=Wolkenband", "album=Wetter", "track=2"}, QString(), "aac");
+    const QString s6 = make("Unbekannte Band - Ohne Tags.wav", 2, 523, {}, QString(), "pcm_s16le");
+    QFile::remove(src + "/a.png");
+    QFile::remove(src + "/b.png");
+    const QStringList all{s1, s2, s3, s4, s5, s6};
+    auto norm = [](const QString& p) { return QDir::cleanPath(QFileInfo(p).absoluteFilePath()); };
+
+    setPluginEnabled("music", true);
+    btnLib_->setChecked(true);
+    applyLayoutVisibility();
+    resize(1360, 820);
+    check("Leere Bibliothek zeigt Hinweis", lib_->songs().isEmpty() && musicPanel_->visibleCount() == 0);
+    shot("musik-leer");
+    lib_->import({src});
+    (*waitFor)([this] { return !lib_->busy() && lib_->songs().size() >= 6; }, 30000, [=](bool ok) {
+        check("Ordner eingelesen", ok && lib_->songs().size() == 6, QString::number(lib_->songs().size()));
+        const Song* a = lib_->find(norm(s3));
+        check("Umlaute im Titel", a && a->title == QString::fromUtf8("Abendrot über Köln"), a ? a->title : QString());
+        check("Album und Titelnummer", a && a->album == "Morgen" && a->track == "3" && a->artist == "Nordlicht");
+        check("Länge gelesen", a && std::abs(a->duration - 3) < 0.2, a ? QString::number(a->duration) : QString());
+        int covers = 0;
+        for (const Song& s : lib_->songs()) covers += !s.cover.isEmpty() && QFileInfo::exists(lib_->coverFile(s));
+        check("Cover gelesen", covers == 4, QString::number(covers));
+        const Song* w = lib_->find(norm(s6));
+        check("Ohne Angaben: Name aus der Datei", w && w->artist == "Unbekannte Band" && w->title == "Ohne Tags", w ? w->artist + "|" + w->title : QString());
+        lib_->import({src});
+        check("Nochmal einlesen ändert nichts", !lib_->busy() && lib_->songs().size() == 6);
+
+        musicPanel_->showView(0);
+        QApplication::processEvents();
+        check("Songs-Ansicht", musicPanel_->visibleCount() == 6);
+        shot("musik-songs");
+        musicPanel_->setSearch("regen");
+        check("Suche", musicPanel_->visibleCount() == 1);
+        musicPanel_->setSearch(QString());
+        musicPanel_->showView(1);
+        check("Alben", musicPanel_->visibleCount() == 3, QString::number(musicPanel_->visibleCount()));
+        shot("musik-alben");
+        musicPanel_->openGroup("album", "morgen");
+        check("Album geöffnet", musicPanel_->visibleCount() == 3);
+        shot("musik-album");
+        musicPanel_->showView(2);
+        check("Interpreten", musicPanel_->visibleCount() == 3, QString::number(musicPanel_->visibleCount()));
+        shot("musik-interpreten");
+
+        const QString id = lib_->createPlaylist("Lieblinge");
+        lib_->addToPlaylist(id, {norm(s4), norm(s1), norm(s6), norm(s2)});
+        lib_->movePlaylistItem(id, 2, 0);
+        lib_->removeFromPlaylist(id, 2);
+        const Playlist* pl = lib_->playlist(id);
+        check("Playlist: hinzufügen, verschieben, entfernen",
+              pl && pl->paths == QStringList{norm(s6), norm(s4), norm(s2)}, pl ? pl->paths.join(", ") : QString());
+        musicPanel_->showView(3);
+        check("Playlists-Ansicht", musicPanel_->visibleCount() == 2);
+        shot("musik-playlists");
+        musicPanel_->openGroup("list", id);
+        check("Playlist geöffnet in ihrer Reihenfolge", musicPanel_->visibleCount() == 3);
+        shot("musik-playlist");
+
+        QTimer::singleShot(700, this, [=] {
+            MusicLibrary again;
+            check("Bibliothek bleibt gespeichert", again.songs().size() == 6 && again.playlists().size() == 1 &&
+                                                       again.playlists().first().paths.size() == 3);
+
+            // ---- Warteschlange: von selbst weiter, vor und zurück, Wiederholen, Zufall
+            musicPanel_->showView(0);
+            // Verlauf mitschreiben: welcher Song wann geöffnet ist und wie der Player steht
+            auto trail = std::make_shared<QStringList>();
+            auto* watch = new QTimer(this);
+            auto clock = std::make_shared<QElapsedTimer>();
+            clock->start();
+            connect(watch, &QTimer::timeout, this, [=] {
+                const QString now = QString("%1 %2 %3 t=%4").arg(pr_.sources.isEmpty() ? QString("-") : QFileInfo(pr_.sources[0].path).fileName())
+                                        .arg(int(player_->mediaStatus())).arg(int(player_->playbackState())).arg(t_, 0, 'f', 1)
+                                    + QString(" pos=%1 dur=%2 pend=%3 load=%4 pcs=%5 err=%6").arg(player_->position()).arg(player_->duration())
+                                          .arg(pending_).arg(loading_).arg(pr_.pieces.size()).arg(player_->errorString());
+                if (!trail->isEmpty() && trail->last().section(" @", 0, 0) == now) return;
+                *trail << now + QString(" @%1ms").arg(clock->elapsed());
+                QFile f(dir + "/musik-verlauf.txt");
+                f.open(QIODevice::WriteOnly | QIODevice::Text);
+                f.write(trail->join(QChar('\n')).toUtf8());
+            });
+            watch->start(50);
+            playList({norm(s4), norm(s5), norm(s6)}, 0);
+            (*waitFor)([this] { return player_->playbackState() == QMediaPlayer::PlayingState; }, 5000, [=](bool playing) {
+                check("Song spielt sofort", playing);
+                check("Knöpfe für die Warteschlange", btnNext_->isVisible() && btnPrev_->isVisible() && btnShuffle_->isVisible());
+                shot("musik-spielt");
+                (*waitFor)([=] { return !pr_.sources.isEmpty() && pr_.sources[0].path == norm(s5); }, 8000, [=](bool next) {
+                    check("Am Ende kommt der nächste Song", next);
+                    nextTrack(true);
+                    check("Weiter-Knopf", pr_.sources[0].path == norm(s6));
+                    prevTrack();
+                    check("Zurück-Knopf", pr_.sources[0].path == norm(s5));
+                    setRepeat(2);
+                    const int before = opened_;
+                    (*waitFor)([=] { return opened_ > before; }, 8000, [=](bool again) {
+                        check("Ein Titel wiederholen", again && pr_.sources[0].path == norm(s5));
+                        setRepeat(1);
+                        playAt(2);
+                        (*waitFor)([=] { return pr_.sources[0].path == norm(s4); }, 8000, [=](bool wrapped) {
+                            check("Alle wiederholen springt an den Anfang", wrapped);
+                            setRepeat(0);
+                            btnShuffle_->setChecked(true);
+                            std::vector<int> o = order_;
+                            std::sort(o.begin(), o.end());
+                            check("Zufall: aktueller Song zuerst, alle dabei", order_.size() == 3 && queue_[order_[0]] == norm(s4) && o == std::vector<int>{0, 1, 2});
+                            btnShuffle_->setChecked(false);
+                            queueInsert({norm(s1)}, true);
+                            check("Als Nächstes einreihen", queue_[order_[queuePos_ + 1]] == norm(s1));
+                            queueInsert({norm(s2)}, false);
+                            check("An die Warteschlange hängen", queue_[order_.back()] == norm(s2));
+
+                            // ---- Fehlende Datei, Plugin aus, Dialoge
+                            QFile::rename(s6, s6 + ".weg");
+                            musicPanel_->showView(0);
+                            check("Fehlende Datei bleibt sichtbar", musicPanel_->visibleCount() == 6);
+                            QFile::rename(s6 + ".weg", s6);
+                            openFile(s1);
+                            check("Datei von außen beendet die Warteschlange", order_.empty() && !btnNext_->isVisible());
+                            setPluginEnabled("music", false);
+                            applyLayoutVisibility();
+                            check("Plugin aus: Bibliothek weg", !musicPanel_->isVisible() && !btnLib_->isVisible());
+                            shot("musik-aus");
+                            setPluginEnabled("music", true);
+                            applyLayoutVisibility();
+                            check("Plugin an: Bibliothek wieder da", musicPanel_->isVisible() && btnLib_->isVisible());
+                            {
+                                PluginDialog d(this);
+                                d.setAttribute(Qt::WA_DontShowOnScreen);
+                                d.show();
+                                QApplication::processEvents();
+                                d.grab().save(dir + "/plugins.png");
+                            }
+                            {
+                                DownloadDialog d(lib_, this);
+                                d.setAttribute(Qt::WA_DontShowOnScreen);
+                                d.show();
+                                QApplication::processEvents();
+                                d.grab().save(dir + "/download.png");
+                            }
+                            // Jedes Format einzeln anspielen: läuft die Zeit?
+                            const QStringList files = all + qEnvironmentVariable("VIDLINE_PLAYFILES").split(';', Qt::SkipEmptyParts);
+                            auto each = std::make_shared<std::function<void(int)>>();
+                            *each = [=](int i) {
+                                if (i >= files.size()) return done();
+                                openFile(files[i]);
+                                player_->play();
+                                QTimer::singleShot(2200, this, [=] {
+                                    check("Spielt: " + QFileInfo(files[i]).fileName(), player_->position() > 300,
+                                          QString("pos %1, Status %2").arg(player_->position()).arg(int(player_->mediaStatus())));
+                                    (*each)(i + 1);
+                                });
+                            };
+                            (*each)(0);
+                        });
+                    });
+                });
+            });
+        });
+    });
+}
+
+// Entwickler-Test mit Netz: yt-dlp einrichten und einen Link als MP3 laden.
+// Aufruf: VIDLINE_SETTINGS=<ordner> VIDLINE_DATA=<ordner> Vidline --dlshots <ordner> <link>
+void MainWindow::downloadShots(const QString& dir, const QString& url) {
+    silent_ = true;
+    audio_->setMuted(true);
+    setPluginEnabled("music", true);
+    QSettings().setValue("music/downloads", dir + "/downloads");
+    auto* d = new DownloadDialog(lib_, this);
+    d->setAttribute(Qt::WA_DontShowOnScreen);
+    d->show();
+    d->startWith(url, false);
+    auto* t = new QTimer(this);
+    auto started = std::make_shared<QElapsedTimer>();
+    started->start();
+    connect(t, &QTimer::timeout, this, [=] {
+        QFile st(dir + "/download-status.txt");
+        if (st.open(QIODevice::Append | QIODevice::Text))
+            st.write(QString("%1 ms: %2\n").arg(started->elapsed()).arg(d->status()).toUtf8());
+        if (d->running() && started->elapsed() < 600000) return;
+        if (lib_->busy()) return;
+        t->stop();
+        d->grab().save(dir + "/download-fertig.png");
+        QStringList out;
+        out << "Status: " + d->status();
+        for (const QString& f : d->files()) {
+            const Song* s = lib_->find(QDir::cleanPath(QFileInfo(f).absoluteFilePath()));
+            out << QString("%1 | %2 KB | in Bibliothek: %3 | Titel: %4 | Interpret: %5 | Cover: %6 | Länge: %7")
+                       .arg(QFileInfo(f).fileName()).arg(QFileInfo(f).size() / 1024).arg(s ? "ja" : "nein")
+                       .arg(s ? s->title : QString(), s ? s->artist : QString(), s && !s->cover.isEmpty() ? "ja" : "nein")
+                       .arg(s ? s->duration : 0);
+        }
+        QFile f(dir + "/download-ergebnis.txt");
+        f.open(QIODevice::WriteOnly | QIODevice::Text);
+        f.write(out.join('\n').toUtf8() + "\n");
+        f.close();
+        QTimer::singleShot(300, qApp, &QApplication::quit);
+    });
+    t->start(500);
 }

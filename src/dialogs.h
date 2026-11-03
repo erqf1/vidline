@@ -57,13 +57,14 @@ signals:
     void themeChanged(const QString& id);
     void accentChanged(const QString& color);  // leer = Farbe des Designs
     void checkUpdates();
+    void openPlugins();
 
 private:
     void retranslate();
     void markAccent();  // gewählte Farbe umranden
     QLabel *lblLang_, *lblTheme_, *lblAccent_, *lblIcons_ = nullptr;
     QComboBox *lang_, *theme_, *icons_ = nullptr;
-    QPushButton *ok_, *update_, *keys_, *accentDefault_, *accentCustom_;
+    QPushButton *ok_, *update_, *keys_, *plugins_, *accentDefault_, *accentCustom_;
     QList<QPushButton*> swatches_;
 };
 

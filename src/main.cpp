@@ -86,6 +86,11 @@ int main(int argc, char* argv[]) {
             qputenv("QT_DISABLE_HW_TEXTURES_CONVERSION", "1");
     }
 #endif
+    // Tests: eigene Einstellungen statt der echten (VIDLINE_SETTINGS=<ordner>)
+    if (qEnvironmentVariableIsSet("VIDLINE_SETTINGS")) {
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, qEnvironmentVariable("VIDLINE_SETTINGS"));
+    }
     App app(argc, argv);
     app.installEventFilter(new NoWheelChange);
     // Mitgelieferte Text-Schriften erst laden, wenn man einen Text einfügt (schnellerer Start)
@@ -125,5 +130,7 @@ int main(int argc, char* argv[]) {
     if (args.size() > 3 && args[2] == "--aspectshots") w.aspectShots(args[3]);
     if (args.size() > 3 && args[2] == "--fsshots") w.fsShots(args[3]);
     if (args.size() > 3 && args[2] == "--tagshots") w.tagShots(args[3]);
+    if (args.size() > 2 && args[1] == "--musicshots") w.musicShots(args[2]);
+    if (args.size() > 3 && args[1] == "--dlshots") w.downloadShots(args[2], args[3]);
     return app.exec();
 }

@@ -224,6 +224,79 @@ QIcon makeIcon(Ic id, const QColor& c) {
         p.drawArc(QRectF(42, 18, 46, 64), -60 * 16, 120 * 16);
         break;
     }
+    case Ic::Library: {
+        p.drawLine(12, 24, 58, 24);
+        p.drawLine(12, 44, 58, 44);
+        p.drawLine(12, 64, 40, 64);
+        fill();
+        p.drawEllipse(QPointF(68, 76), 11, 9);
+        stroke();
+        p.drawLine(78, 74, 78, 28);
+        p.drawLine(78, 28, 92, 36);
+        break;
+    }
+    case Ic::Prev:
+    case Ic::Next: {
+        p.save();
+        if (id == Ic::Prev) {
+            p.translate(100, 0);
+            p.scale(-1, 1);
+        }
+        fill();
+        QPainterPath t;
+        t.moveTo(22, 22); t.lineTo(66, 50); t.lineTo(22, 78); t.closeSubpath();
+        p.drawPath(t);
+        p.drawRoundedRect(QRectF(70, 22, 9, 56), 3, 3);
+        p.restore();
+        break;
+    }
+    case Ic::Shuffle: {
+        QPainterPath a;
+        a.moveTo(12, 30); a.lineTo(28, 30); a.cubicTo(52, 30, 50, 70, 74, 70); a.lineTo(86, 70);
+        QPainterPath b;
+        b.moveTo(12, 70); b.lineTo(28, 70); b.cubicTo(52, 70, 50, 30, 74, 30); b.lineTo(86, 30);
+        p.drawPath(a);
+        p.drawPath(b);
+        p.drawLine(76, 20, 88, 30); p.drawLine(88, 30, 76, 40);
+        p.drawLine(76, 60, 88, 70); p.drawLine(88, 70, 76, 80);
+        break;
+    }
+    case Ic::Repeat:
+    case Ic::RepeatOne: {
+        QPainterPath r;
+        r.moveTo(30, 30); r.lineTo(70, 30); r.quadTo(86, 30, 86, 46); r.lineTo(86, 52);
+        r.moveTo(70, 70); r.lineTo(30, 70); r.quadTo(14, 70, 14, 54); r.lineTo(14, 48);
+        p.drawPath(r);
+        p.drawLine(62, 20, 72, 30); p.drawLine(72, 30, 62, 40);
+        p.drawLine(38, 60, 28, 70); p.drawLine(28, 70, 38, 80);
+        if (id == Ic::RepeatOne) {
+            QFont f;
+            f.setPixelSize(30);
+            f.setBold(true);
+            p.setFont(f);
+            p.drawText(QRectF(30, 32, 40, 36), Qt::AlignCenter, "1");
+        }
+        break;
+    }
+    case Ic::Plugin: {
+        QPainterPath r;
+        r.addRoundedRect(QRectF(16, 32, 50, 50), 7, 7);
+        QPainterPath t1;
+        t1.addEllipse(QPointF(41, 28), 11, 11);
+        QPainterPath t2;
+        t2.addEllipse(QPointF(70, 57), 11, 11);
+        p.drawPath(r.united(t1).united(t2).simplified());
+        break;
+    }
+    case Ic::Download: {
+        p.drawLine(50, 12, 50, 62);
+        p.drawLine(32, 44, 50, 62);
+        p.drawLine(50, 62, 68, 44);
+        QPainterPath tr;
+        tr.moveTo(16, 66); tr.lineTo(16, 84); tr.lineTo(84, 84); tr.lineTo(84, 66);
+        p.drawPath(tr);
+        break;
+    }
     }
     p.end();
     return QIcon(pm);

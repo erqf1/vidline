@@ -262,6 +262,9 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
         dlg.exec();
     });
     v->addWidget(keys_);
+    plugins_ = new QPushButton;
+    connect(plugins_, &QPushButton::clicked, this, &SettingsDialog::openPlugins);
+    v->addWidget(plugins_);
     v->addStretch();
     ok_ = new QPushButton;
     ok_->setObjectName("primary");
@@ -311,6 +314,7 @@ void SettingsDialog::retranslate() {
     ok_->setText(T("ok"));
     update_->setText(T("upd_check"));
     keys_->setText(T("shortcuts") + "…");
+    plugins_->setText(T("plugins") + "…");
 }
 
 // ---------------------------------------------------------------- Tastenkürzel

@@ -4,6 +4,7 @@ A fast video and music player with editing built in. Open a video (or a music fi
 
 - **Also a good video and music player.** Make it your default app for mp4/mov/mkv and mp3/wav/flac: instant start, live frames while scrubbing, controls that hide by themselves in fullscreen, hold `Space` for 2× speed, click to pause, 5-second skip, ambient light around the video.
 - **Music with its cover.** Songs fill the window with their blurred cover, and the Tags button lets you change cover, title, artist, album, year, track and genre without touching the sound.
+- **Plugins, starting with Music.** Install the Music plugin in the settings for a library next to the player: songs, albums, artists, search, playlists, a queue with shuffle and repeat, media keys, and downloading the sound from a link with title and cover (via [yt-dlp](https://github.com/yt-dlp/yt-dlp), fetched on first use). Only download what you are allowed to.
 - **Opens instantly.** No import step, no project setup. Drag a video in and it plays – waveforms and thumbnails for editing are only computed when you start editing.
 - **Edit mode with a timeline.** Drag segment edges to trim (the edge follows your mouse, the gap closes when you let go), drag segments to reorder them, split only what is selected (or everything at the playhead), per-segment speed, zoom in/out.
 - **Resizable layout** like in CapCut: drag the dividers to make the media panel, the video, the properties or the timeline bigger or smaller.
