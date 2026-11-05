@@ -1,4 +1,5 @@
 #include "dialogs.h"
+#include "defaultapps.h"
 #include "fileicons.h"
 #include <QProcess>
 #include <QColorDialog>
@@ -265,6 +266,13 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     plugins_ = new QPushButton;
     connect(plugins_, &QPushButton::clicked, this, &SettingsDialog::openPlugins);
     v->addWidget(plugins_);
+    // Als Standard-App festlegen (Videos und Musik)
+    defaults_ = new QPushButton;
+    connect(defaults_, &QPushButton::clicked, this, [this] {
+        DefaultAppsDialog dlg(this);
+        dlg.exec();
+    });
+    v->addWidget(defaults_);
     v->addStretch();
     ok_ = new QPushButton;
     ok_->setObjectName("primary");
@@ -315,6 +323,7 @@ void SettingsDialog::retranslate() {
     update_->setText(T("upd_check"));
     keys_->setText(T("shortcuts") + "…");
     plugins_->setText(T("plugins") + "…");
+    defaults_->setText(T("da_menu"));
 }
 
 // ---------------------------------------------------------------- Tastenkürzel

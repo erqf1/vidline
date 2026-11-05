@@ -64,7 +64,7 @@ private:
     void markAccent();  // gewählte Farbe umranden
     QLabel *lblLang_, *lblTheme_, *lblAccent_, *lblIcons_ = nullptr;
     QComboBox *lang_, *theme_, *icons_ = nullptr;
-    QPushButton *ok_, *update_, *keys_, *plugins_, *accentDefault_, *accentCustom_;
+    QPushButton *ok_, *update_, *keys_, *plugins_, *defaults_, *accentDefault_, *accentCustom_;
     QList<QPushButton*> swatches_;
 };
 

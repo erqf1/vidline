@@ -19,6 +19,8 @@
 #include "i18n.h"
 #include "icons.h"
 #include "mainwindow.h"
+#include "defaultapps.h"
+#include <QLabel>
 #include "textrender.h"
 #include "theme.h"
 
@@ -132,5 +134,20 @@ int main(int argc, char* argv[]) {
     if (args.size() > 3 && args[2] == "--tagshots") w.tagShots(args[3]);
     if (args.size() > 2 && args[1] == "--musicshots") w.musicShots(args[2]);
     if (args.size() > 3 && args[1] == "--dlshots") w.downloadShots(args[2], args[3]);
+    // Entwickler-Test: Fenster "Als Standard-App festlegen" nur lesen und als Bild speichern
+    if (args.size() > 2 && args[1] == "--defaultsshots")
+        QTimer::singleShot(500, &w, [dir = args[2]] {
+            auto* dlg = new DefaultAppsDialog;
+            dlg->show();
+            QTimer::singleShot(6000, dlg, [dlg, dir] {
+                QDir().mkpath(dir);
+                dlg->grab().save(QDir(dir).filePath("defaults.png"));
+                QStringList rows;
+                for (QLabel* l : dlg->findChildren<QLabel*>()) rows << l->text();
+                QFile f(QDir(dir).filePath("defaults.txt"));
+                if (f.open(QIODevice::WriteOnly)) f.write(rows.join(QChar(10)).toUtf8());
+                QCoreApplication::exit(0);
+            });
+        });
     return app.exec();
 }
