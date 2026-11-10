@@ -224,6 +224,21 @@ QIcon makeIcon(Ic id, const QColor& c) {
         p.drawArc(QRectF(42, 18, 46, 64), -60 * 16, 120 * 16);
         break;
     }
+    case Ic::VolumeLow:
+    case Ic::VolumeMute: {
+        fill();
+        QPainterPath s; s.moveTo(12, 38); s.lineTo(30, 38); s.lineTo(52, 18); s.lineTo(52, 82); s.lineTo(30, 62); s.lineTo(12, 62);
+        s.closeSubpath();
+        p.drawPath(s);
+        stroke();
+        if (id == Ic::VolumeLow) {
+            p.drawArc(QRectF(42, 32, 26, 36), -60 * 16, 120 * 16);
+        } else {
+            p.drawLine(64, 38, 86, 62);
+            p.drawLine(86, 38, 64, 62);
+        }
+        break;
+    }
     case Ic::Library: {
         p.drawLine(12, 24, 58, 24);
         p.drawLine(12, 44, 58, 44);

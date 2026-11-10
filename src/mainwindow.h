@@ -73,6 +73,13 @@ public:
     void fsShots(const QString& dir);      // Entwickler-Test: Vollbild-Steuerung ein-/ausblenden
     void musicShots(const QString& dir);   // Entwickler-Test: Musik-Plugin mit selbst erzeugten Songs
     void downloadShots(const QString& dir, const QString& url);  // Entwickler-Test: Download per Link
+    void volumeTest(const QString& dir);                          // Entwickler-Test: Lautstärkeregler
+    void videoDownloadTest(const QString& dir, const QString& url);  // Entwickler-Test: Video-Download-Plugin
+    // Lautstärke für alles (Video, Musik, Ton-Clips). Wird nicht gespeichert: jeder Start beginnt bei 100 %.
+    void setMasterVolume(double v, bool hint = false);
+    void toggleMute();
+    double effectiveVolume() const { return volMuted_ ? 0.0 : masterVol_; }
+    void openVideoDownload();
 
     // EditorHost
     Project& pr() override { return pr_; }
@@ -238,7 +245,12 @@ private:
     int loadedSrc_ = -1;
     bool pending_ = false, pendingPlay_ = false;
     double pendingPos_ = 0, pendingRate_ = 1;
-    double masterVol_ = 1.0;  // Lautstärke wird pro Abschnitt / Ton-Clip eingestellt
+    double masterVol_ = 1.0;  // Lautstärke-Regler (mal Lautstärke je Abschnitt / Ton-Clip), startet immer bei 100 %
+    bool volMuted_ = false;
+    QPushButton *btnVol_ = nullptr, *fsVolBtn_ = nullptr, *btnVdl_ = nullptr;
+    QSlider *sliderVol_ = nullptr, *fsVolSlider_ = nullptr;
+    class VideoDownloadDialog* vdl_ = nullptr;
+    void updateVolumeIcon();
     // Spulen: Player-Sprünge drosseln, bis der Sprung angekommen ist, die alte Position ignorieren
     QTimer* seekTimer_ = nullptr;     // Spulen: falls ein angefordertes Bild nicht kommt, trotzdem weiter
     QElapsedTimer seekThrottle_, seekClock_, scrubFlight_;

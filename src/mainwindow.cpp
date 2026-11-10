@@ -36,8 +36,13 @@
 #include <QAbstractSpinBox>
 #include <QRandomGenerator>
 #include <QShortcut>
+#include <QAbstractItemView>
+#include <QAbstractSlider>
+#include <QComboBox>
+#include <QSlider>
 #include "dialogs.h"
 #include "music.h"
+#include "videodl.h"
 #include "plugins.h"
 #include "shortcuts.h"
 #include "i18n.h"
@@ -587,7 +592,7 @@ void MainWindow::buildUi() {
     // Player + Videoansicht
     player_ = new QMediaPlayer(this);
     audio_ = new QAudioOutput(this);
-    audio_->setVolume(float(masterVol_));
+    audio_->setVolume(float(effectiveVolume()));
     audio_->setMuted(silent_);
     player_->setAudioOutput(audio_);
     scene_ = new QGraphicsScene(this);
@@ -698,7 +703,11 @@ void MainWindow::buildUi() {
     btnRepeat_->setCheckable(true);
     connect(btnRepeat_, &QPushButton::clicked, this, [this] { setRepeat((repeat_ + 1) % 3); });
     for (QPushButton* b : {btnPrev_, btnNext_, btnShuffle_, btnRepeat_}) b->hide();
+    btnVdl_ = mk(nullptr, "vdl_open_tip", Ic::Download);
+    connect(btnVdl_, &QPushButton::clicked, this, &MainWindow::openVideoDownload);
+    btnVdl_->hide();
     bar->addWidget(btnLib_);
+    bar->addWidget(btnVdl_);
     bar->addWidget(btnPrev_);
     bar->addWidget(btnPlay_);
     bar->addWidget(btnNext_);
@@ -707,6 +716,27 @@ void MainWindow::buildUi() {
     seekGap_->hide();
     bar->addWidget(seekGap_, 1);
     bar->addWidget(lblTime_);
+    btnVol_ = new QPushButton;
+    btnVol_->setFocusPolicy(Qt::NoFocus);
+    btnVol_->setCursor(Qt::PointingHandCursor);
+    btnVol_->setIconSize(QSize(18, 18));
+    connect(btnVol_, &QPushButton::clicked, this, &MainWindow::toggleMute);
+    sliderVol_ = new QSlider(Qt::Horizontal);
+    sliderVol_->setObjectName("volume");
+    sliderVol_->setRange(0, 100);
+    sliderVol_->setValue(100);
+    sliderVol_->setPageStep(10);
+    sliderVol_->setSingleStep(5);
+    sliderVol_->setFixedWidth(92);
+    sliderVol_->setFocusPolicy(Qt::NoFocus);
+    connect(sliderVol_, &QSlider::valueChanged, this, [this](int v) { setMasterVolume(v / 100.0); });
+    auto* volBox = new QWidget;
+    auto* vb = new QHBoxLayout(volBox);
+    vb->setContentsMargins(0, 0, 0, 0);
+    vb->setSpacing(2);
+    vb->addWidget(btnVol_);
+    vb->addWidget(sliderVol_);
+    bar->addWidget(volBox);
     bar->addWidget(btnShuffle_);
     bar->addWidget(btnRepeat_);
     btnTags_ = mk("tags", "tags_tip", Ic::Music);
@@ -888,9 +918,24 @@ void MainWindow::buildUi() {
     fsSlider_->setFocusPolicy(Qt::NoFocus);
     wireSeekSlider(fsSlider_);
     fsTime_ = new QLabel;
+    fsVolBtn_ = new QPushButton;
+    fsVolBtn_->setFixedSize(28, 28);
+    fsVolBtn_->setIconSize(QSize(16, 16));
+    fsVolBtn_->setFocusPolicy(Qt::NoFocus);
+    fsVolBtn_->setCursor(Qt::PointingHandCursor);
+    fsVolBtn_->setStyleSheet(vidBtn);
+    connect(fsVolBtn_, &QPushButton::clicked, this, &MainWindow::toggleMute);
+    fsVolSlider_ = new QSlider(Qt::Horizontal);
+    fsVolSlider_->setRange(0, 100);
+    fsVolSlider_->setValue(100);
+    fsVolSlider_->setFixedWidth(80);
+    fsVolSlider_->setFocusPolicy(Qt::NoFocus);
+    connect(fsVolSlider_, &QSlider::valueChanged, this, [this](int v) { setMasterVolume(v / 100.0); });
     fb->addWidget(fsPlay_);
     fb->addWidget(fsSlider_, 1);
     fb->addWidget(fsTime_);
+    fb->addWidget(fsVolBtn_);
+    fb->addWidget(fsVolSlider_);
     connect(fsPlay_, &QPushButton::clicked, this, &MainWindow::togglePlay);
     fsBar_->hide();
     fsHint_ = new QLabel(view_);
@@ -1006,6 +1051,7 @@ void MainWindow::applyTheme() {
     // XP: Taskleiste mit Innenabstand, sonst bündig
     if (auto* l = topbar_->layout()) l->setContentsMargins(th.xp ? QMargins(6, 4, 6, 4) : QMargins(0, 0, 0, 0));
     updatePlayIcon();
+    updateVolumeIcon();
     placeVideoControls();
     view_->viewport()->update();
     timeline_->update();
@@ -1185,6 +1231,29 @@ bool MainWindow::eventFilter(QObject* o, QEvent* e) {
             return true;
         }
     }
+    if (e->type() == QEvent::KeyPress && (QApplication::activeWindow() == this || (silent_ && isVisible()))) {
+        auto* ke = static_cast<QKeyEvent*>(e);
+        const auto mods = ke->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier | Qt::ShiftModifier);
+        // Listen, Regler und Auswahlfelder brauchen die Pfeiltasten selbst - die Videofläche nicht.
+        // Geprüft wird der Empfänger der Taste und das Feld mit dem Fokus.
+        auto needsArrows = [this](QWidget* w) {
+            if (!w || w == view_ || view_->isAncestorOf(w)) return false;
+            return qobject_cast<QAbstractItemView*>(w) || qobject_cast<QAbstractSlider*>(w) || qobject_cast<QComboBox*>(w) ||
+                   w->inherits("QAbstractScrollArea");
+        };
+        const bool wantsArrows = needsArrows(qobject_cast<QWidget*>(o)) || needsArrows(QApplication::focusWidget());
+        if (!mods && !typingFocus() && !btnEdit_->isChecked()) {
+            if ((ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down) && !wantsArrows) {
+                setMasterVolume(masterVol_ + (ke->key() == Qt::Key_Up ? 0.05 : -0.05), true);
+                return true;
+            }
+            if (ke->key() == Qt::Key_M && !ke->isAutoRepeat()) {
+                toggleMute();
+                showVideoHint(volMuted_ ? T("vol_muted") : T("volume") + QString("  %1 %").arg(qRound(masterVol_ * 100)), 900);
+                return true;
+            }
+        }
+    }
     if (o == view_ && e->type() == QEvent::Resize) placeVideoControls();
     if (o == tlScroll_->viewport() && e->type() == QEvent::Resize)
         QTimer::singleShot(0, this, [this] { timeline_->relayout(); });
@@ -1268,6 +1337,7 @@ void MainWindow::applyLayoutVisibility() {
     const bool music = pluginEnabled("music");
     musicPanel_->setVisible(music && btnLib_->isChecked() && !edit && !fullscreen_);
     btnLib_->setVisible(music && !edit);
+    btnVdl_->setVisible(pluginEnabled("videodl") && !edit);
     updateQueueButtons();
     if (fullscreen_) {
         rootLayout_->setContentsMargins(0, 0, 0, 0);
@@ -1653,7 +1723,56 @@ void MainWindow::activate(int i, double srcPos, bool play) {
 
 void MainWindow::applyPlayerVolume() {
     const double pv = cur_ >= 0 && cur_ < pr_.pieces.size() ? pr_.pieces[cur_].volume : 1.0;
-    audio_->setVolume(float(std::clamp(pv * masterVol_, 0.0, 1.0)));
+    audio_->setVolume(float(std::clamp(pv * effectiveVolume(), 0.0, 1.0)));
+}
+
+void MainWindow::setMasterVolume(double v, bool hint) {
+    masterVol_ = std::clamp(std::round(v * 100.0) / 100.0, 0.0, 1.0);
+    if (masterVol_ > 0) volMuted_ = false;
+    for (QSlider* s : {sliderVol_, fsVolSlider_})
+        if (s && s->value() != qRound(masterVol_ * 100)) {
+            QSignalBlocker b(s);
+            s->setValue(qRound(masterVol_ * 100));
+        }
+    applyPlayerVolume();
+    updateAudio(false);
+    updateVolumeIcon();
+    if (hint) showVideoHint(T("volume") + QString("  %1 %").arg(qRound(masterVol_ * 100)), 900);
+}
+
+void MainWindow::toggleMute() {
+    if (masterVol_ <= 0) {  // auf 0 gezogen und dann aufs Symbol: wieder hörbar statt "stumm" umzuschalten
+        volMuted_ = false;
+        setMasterVolume(0.5);
+        return;
+    }
+    volMuted_ = !volMuted_;
+    applyPlayerVolume();
+    updateAudio(false);
+    updateVolumeIcon();
+}
+
+void MainWindow::updateVolumeIcon() {
+    if (!btnVol_) return;
+    const Theme& th = currentTheme();
+    const double v = effectiveVolume();
+    const Ic ic = v <= 0 ? Ic::VolumeMute : v < 0.5 ? Ic::VolumeLow : Ic::Volume;
+    btnVol_->setIcon(makeIcon(ic, th.text));
+    if (fsVolBtn_) fsVolBtn_->setIcon(makeIcon(ic, Qt::white));
+    const QString tip = volMuted_ ? T("vol_muted") + "  (M)" : T("volume") + QString("  %1 %  (↑ ↓, M)").arg(qRound(masterVol_ * 100));
+    btnVol_->setToolTip(tip);
+    if (fsVolBtn_) fsVolBtn_->setToolTip(tip);
+    sliderVol_->setToolTip(T("volume") + QString("  %1 %").arg(qRound(masterVol_ * 100)));
+}
+
+void MainWindow::openVideoDownload() {
+    if (!vdl_) {
+        vdl_ = new VideoDownloadDialog(this);
+        connect(vdl_, &VideoDownloadDialog::openFile, this, [this](const QString& path) { openFile(path); });
+    }
+    vdl_->show();
+    vdl_->raise();
+    vdl_->activateWindow();
 }
 
 void MainWindow::muteBriefly() {
@@ -1874,7 +1993,7 @@ void MainWindow::updateAudio(bool force) {
     for (auto& [id, ap] : audioPlayers_) {
         AudioClip* a = pr_.audio(id);
         if (!a) continue;
-        ap.out->setVolume(float(std::clamp(a->volume * masterVol_, 0.0, 1.0)));
+        ap.out->setVolume(float(std::clamp(a->volume * effectiveVolume(), 0.0, 1.0)));
         const bool inRange = t_ >= a->t0 && t_ < a->t0 + a->dur;
         if (playing && inRange) {
             qint64 want = qint64((a->srcStart + (t_ - a->t0)) * 1000);
@@ -3728,4 +3847,226 @@ void MainWindow::downloadShots(const QString& dir, const QString& url) {
         QTimer::singleShot(300, qApp, &QApplication::quit);
     });
     t->start(500);
+}
+
+// ---------------------------------------------------------------- Entwickler-Test: Lautstärkeregler
+// Aufruf: VIDLINE_SETTINGS=<ordner> Vidline --voltest <ordner>
+void MainWindow::volumeTest(const QString& dir) {
+    silent_ = true;
+    audio_->setMuted(true);
+    // Ergebnisse überleben die Funktion (der Test läuft später im Timer)
+    auto r = std::make_shared<QStringList>();
+    auto fails = std::make_shared<int>(0);
+    auto check = [r, fails](const QString& name, bool ok, const QString& info = QString()) {
+        *r << QString("%1 %2%3").arg(ok ? "ok  " : "FEHL", name, info.isEmpty() ? QString() : " (" + info + ")");
+        *fails += !ok;
+    };
+    auto near = [](double a, double b) { return std::abs(a - b) < 0.011; };
+    auto key = [this](QObject* to, int k) {
+        QKeyEvent press(QEvent::KeyPress, k, Qt::NoModifier);
+        QApplication::sendEvent(to, &press);
+        QKeyEvent rel(QEvent::KeyRelease, k, Qt::NoModifier);
+        QApplication::sendEvent(to, &rel);
+    };
+    QTimer::singleShot(400, this, [=]() mutable {
+        check("Start bei 100 %", near(masterVol_, 1.0) && sliderVol_->value() == 100 && near(audio_->volume(), 1.0),
+              QString::number(audio_->volume()));
+        check("Regler in der Abspielleiste sichtbar", sliderVol_->isVisibleTo(this) && btnVol_->isVisibleTo(this));
+        sliderVol_->setValue(40);
+        check("Regler auf 40 %: Player leiser", near(audio_->volume(), 0.40), QString::number(audio_->volume()));
+        check("Vollbild-Regler zieht mit", fsVolSlider_->value() == 40);
+        key(view_, Qt::Key_Down);
+        check("Pfeil runter: 35 %", near(masterVol_, 0.35) && sliderVol_->value() == 35, QString::number(masterVol_));
+        key(view_, Qt::Key_Up);
+        key(view_, Qt::Key_Up);
+        check("Pfeil hoch: 45 %", near(masterVol_, 0.45), QString::number(masterVol_));
+        key(view_, Qt::Key_M);
+        check("M: stumm", volMuted_ && near(audio_->volume(), 0.0) && sliderVol_->value() == 45);
+        key(view_, Qt::Key_M);
+        check("M nochmal: wieder 45 %", !volMuted_ && near(audio_->volume(), 0.45));
+        btnVol_->click();
+        check("Klick aufs Symbol: stumm", volMuted_ && near(audio_->volume(), 0.0));
+        btnVol_->click();
+        auto* list = new QListWidget(this);
+        list->addItems({"a", "b", "c"});
+        key(list, Qt::Key_Up);
+        check("Liste behält die Pfeiltasten", near(masterVol_, 0.45), QString::number(masterVol_));
+        delete list;
+        for (int i = 0; i < 30; ++i) key(view_, Qt::Key_Up);
+        check("Höchstens 100 %", near(masterVol_, 1.0));
+        sliderVol_->setValue(0);
+        check("Auf 0: Symbol stumm, Player still", near(audio_->volume(), 0.0));
+        btnVol_->click();
+        check("Stumm aufheben bei 0: 50 %", near(masterVol_, 0.5) && !volMuted_, QString::number(masterVol_));
+        sliderVol_->setValue(70);
+        QStringList keys;
+        for (const QString& k : QSettings().allKeys())
+            if (k.contains("vol", Qt::CaseInsensitive)) keys << k;
+        check("Nichts gespeichert (Neustart = 100 %)", keys.isEmpty(), keys.join(", "));
+        transport_->grab().save(dir + "/lautstaerke-leiste.png");
+        QFile f(dir + "/lautstaerke-ergebnis.txt");
+        f.open(QIODevice::WriteOnly | QIODevice::Text);
+        f.write((r->join('\n') + QString("\n%1 Prüfungen, %2 fehlgeschlagen\n").arg(r->size()).arg(*fails)).toUtf8());
+        f.close();
+        QTimer::singleShot(200, qApp, &QApplication::quit);
+    });
+}
+
+// ---------------------------------------------------------------- Entwickler-Test: Video-Download-Plugin
+// Ohne Link nur die Prüfungen ohne Netz; mit Link zusätzlich echt prüfen und kurze Stücke laden.
+// Aufruf: VIDLINE_SETTINGS=<ordner> VIDLINE_DATA=<ordner> Vidline --vdltest <ordner> [link]
+void MainWindow::videoDownloadTest(const QString& dir, const QString& url) {
+    silent_ = true;
+    audio_->setMuted(true);
+    auto r = std::make_shared<QStringList>();
+    auto fails = std::make_shared<int>(0);
+    auto check = [r, fails](const QString& name, bool ok, const QString& info = QString()) {
+        *r << QString("%1 %2%3").arg(ok ? "ok  " : "FEHL", name, info.isEmpty() ? QString() : " (" + info + ")");
+        *fails += !ok;
+    };
+    auto done = [dir, r, fails] {
+        QFile f(dir + "/vdl-ergebnis.txt");
+        f.open(QIODevice::WriteOnly | QIODevice::Text);
+        f.write((r->join('\n') + QString("\n%1 Prüfungen, %2 fehlgeschlagen\n").arg(r->size()).arg(*fails)).toUtf8());
+        f.close();
+        QTimer::singleShot(300, qApp, &QApplication::quit);
+    };
+
+    // ---- ohne Netz: Formate lesen und Befehlszeilen bauen
+    const QByteArray json = R"({"title":"Test","uploader":"Kanal","extractor_key":"Youtube","duration":100,
+      "thumbnail":"https://x/t.jpg",
+      "formats":[{"format_id":"sb0","ext":"mhtml","vcodec":"none","acodec":"none"},
+        {"format_id":"140","ext":"m4a","vcodec":"none","acodec":"mp4a.40.2","filesize":1600000},
+        {"format_id":"251","ext":"webm","vcodec":"none","acodec":"opus","filesize":1500000},
+        {"format_id":"137","ext":"mp4","vcodec":"avc1.640028","acodec":"none","height":1080,"fps":30,"filesize":40000000},
+        {"format_id":"303","ext":"webm","vcodec":"vp9","acodec":"none","height":1080,"fps":60,"filesize":50000000},
+        {"format_id":"136","ext":"mp4","vcodec":"avc1.4d401f","acodec":"none","height":720,"fps":30,"tbr":1000},
+        {"format_id":"401","ext":"mp4","vcodec":"av01.0.12M.08","acodec":"none","height":2160,"fps":60,"filesize_approx":300000000}],
+      "subtitles":{"de":[{}],"live_chat":[{}]},"automatic_captions":{"en":[{}],"xx":[{}],"de":[{}]}})";
+    const VdlInfo in = parseVdlInfo(json);
+    check("JSON gelesen: Titel, Kanal, Seite, Länge", in.ok && in.title == "Test" && in.uploader == "Kanal" && in.site == "Youtube" && in.duration == 100);
+    check("Auflösungen 2160/1080/720, ohne Vorschaubilder", in.heights == QList<int>({2160, 1080, 720}), QString::number(in.heights.size()));
+    check("Höchste Bildrate je Auflösung", in.fpsAt.value(1080) == 60 && in.fpsAt.value(2160) == 60);
+    check("H.264 erkannt (1080, 720), 4K nur AV1", in.h264Heights.contains(1080) && in.h264Heights.contains(720) && !in.h264Heights.contains(2160));
+    check("Größe ohne Angabe aus Bitrate geschätzt", in.videoSize.value(720) == 1000LL * 125 * 100, QString::number(in.videoSize.value(720)));
+    check("Untertitel: echte de, automatische en (ohne Exoten und Live-Chat)", in.subs == QStringList{"de"} && in.autoSubs == QStringList{"en"},
+          in.subs.join(",") + "|" + in.autoSubs.join(","));
+    VdlOptions o;
+    o.dir = dir;
+    o.height = 720;
+    o.compat = true;
+    QStringList a = vdlArgs(o, "https://u", "C:/ff/ffmpeg.exe");
+    check("Kompatibel: H.264 zuerst, dann 720p, MP4", a.join(' ').contains("-S vcodec:h264,res:720,fps,acodec:aac") && a.join(' ').contains("--merge-output-format mp4"));
+    check("ffmpeg und Link angehängt", a.contains("--ffmpeg-location") && a.last() == "https://u");
+    o = VdlOptions();
+    o.dir = dir;
+    o.container = "webm";
+    a = vdlArgs(o, "https://u", "ffmpeg");
+    check("WebM: kein Cover, VP9/Opus bevorzugt", !a.contains("--embed-thumbnail") && a.join(' ').contains("vcodec:vp9,acodec:opus") && !a.contains("--ffmpeg-location"));
+    o = VdlOptions();
+    o.dir = dir;
+    o.what = 2;
+    o.audioFmt = "mp3";
+    o.audioKbps = 320;
+    o.from = "1:30";
+    o.to = "2:00";
+    a = vdlArgs(o, "https://u", "ffmpeg");
+    check("Nur Ton MP3 320 kbit/s", a.join(' ').contains("-x --audio-format mp3 --audio-quality 320K"));
+    check("Abschnitt 1:30–2:00 = 90–120 s", a.join(' ').contains("--download-sections *90-120") && a.contains("--force-keyframes-at-cuts"));
+    o = VdlOptions();
+    o.dir = dir;
+    o.playlist = true;
+    o.subLang = "de";
+    o.from = "0:10";
+    a = vdlArgs(o, "https://u", "ffmpeg");
+    check("Playlist: eigener Ordner + Nummern", a.contains("--yes-playlist") && a.join(' ').contains("%(playlist_title|Playlist)s/%(playlist_index|0)03d"));
+    check("Untertitel eingebettet (als SRT im MP4)", a.join(' ').contains("--write-subs --sub-langs de --embed-subs --convert-subs srt"));
+    check("Abschnitt ab 0:10 bis Ende", a.join(' ').contains("*10-inf"));
+    check("Zeiten lesen", vdlParseTime("1:02:03") == 3723 && vdlParseTime("90") == 90 && vdlParseTime("x") < 0 && vdlParseTime("") < 0);
+    check("Größen", vdlSize(1500) == "1 KB" && vdlSize(52428800) == "50 MB" && vdlSize(3221225472LL) == "3.0 GB");
+
+    // ---- Plugin an: Knopf in der Leiste
+    setPluginEnabled("videodl", true);
+    applyLayoutVisibility();
+    check("Plugin an: Download-Knopf sichtbar", btnVdl_->isVisibleTo(this));
+    if (url.isEmpty()) return done();
+
+    // ---- mit Netz: Link prüfen, 5 Sekunden in 360p und als MP3 laden
+    QSettings().setValue("videodl/dir", dir + "/videos");
+    openVideoDownload();
+    auto* d = vdl_;
+    d->setAttribute(Qt::WA_DontShowOnScreen);
+    d->analyze(url);
+    auto waitFor = std::make_shared<std::function<void(std::function<bool()>, int, std::function<void(bool)>)>>();
+    *waitFor = [this, waitFor](std::function<bool()> cond, int ms, std::function<void(bool)> then) {
+        if (cond()) return then(true);
+        if (ms <= 0) return then(false);
+        QTimer::singleShot(200, this, [=] { (*waitFor)(cond, ms - 200, then); });
+    };
+    (*waitFor)([d] { return !d->analyzing(); }, 240000, [=](bool) {
+        const VdlInfo& i = d->info();
+        check("Link geprüft", i.ok, d->status());
+        check("Auflösungen gefunden", i.heights.size() >= 3, QString::number(i.heights.size()));
+        check("Qualität zur Auswahl (mit Größe)", d->qualityBox()->count() >= 3 && d->qualityBox()->itemText(1).contains("~"), d->qualityBox()->itemText(1));
+        if (!i.ok) return done();
+        (*waitFor)([d] { return d->hasThumb(); }, 10000, [=](bool th) {
+        check("Vorschaubild geladen", th);
+        QApplication::processEvents();
+        d->grab().save(dir + "/vdl-geprueft.png");
+        VdlOptions v;
+        v.what = 0;
+        v.height = 360;
+        v.from = "0:00";
+        v.to = "0:05";
+        v.dir = dir + "/videos";
+        d->setOptionsForTest(v);
+        d->download();
+        d->analyze(url);
+        (*waitFor)([d] { return !d->analyzing(); }, 120000, [=](bool) {
+            VdlOptions m;
+            m.what = 2;
+            m.audioFmt = "mp3";
+            m.from = "0:00";
+            m.to = "0:05";
+            m.dir = dir + "/videos";
+            d->setOptionsForTest(m);
+            d->download();
+            QApplication::processEvents();
+            d->grab().save(dir + "/vdl-warteschlange.png");
+            (*waitFor)([d] { return !d->busy(); }, 600000, [=](bool ok) {
+                QApplication::processEvents();
+                d->grab().save(dir + "/vdl-fertig.png");
+                const QStringList files = d->finishedFiles();
+                QString vid, mp3;
+                for (const QString& f : files) {
+                    if (f.endsWith(".mp4")) vid = f;
+                    if (f.endsWith(".mp3")) mp3 = f;
+                }
+                check("Beide Downloads fertig", ok && files.size() == 2, files.join(" | ") + " / " + d->status());
+                check("Video (MP4) da", !vid.isEmpty() && QFileInfo(vid).size() > 20000, QString::number(QFileInfo(vid).size()));
+                check("Ton (MP3) da", !mp3.isEmpty() && QFileInfo(mp3).size() > 5000, QString::number(QFileInfo(mp3).size()));
+                // Länge und Auflösung mit ffmpeg prüfen
+                if (!vid.isEmpty()) {
+                    QProcess p;
+                    p.start(ffmpegPath(), {"-hide_banner", "-i", vid});
+                    p.waitForFinished(20000);
+                    const QString info = QString::fromUtf8(p.readAllStandardError());
+                    QRegularExpressionMatch m2 = QRegularExpression("Duration: (\\d+):(\\d+):(\\d+\\.\\d+)").match(info);
+                    const double len = m2.hasMatch() ? m2.captured(1).toInt() * 3600 + m2.captured(2).toInt() * 60 + m2.captured(3).toDouble() : -1;
+                    check("Nur der Abschnitt (etwa 5 s)", len > 3 && len < 8, QString::number(len));
+                    check("360p", info.contains("x360"), info.section("Video:", 1, 1).left(80));
+                    check("Mit Ton", info.contains("Audio:"));
+                    // in Vidline öffnen
+                    emit d->openFile(vid);
+                    (*waitFor)([this] { return !pr_.sources.isEmpty(); }, 20000, [=](bool o2) {
+                        check("Abspielen öffnet in Vidline", o2);
+                        done();
+                    });
+                    return;
+                }
+                done();
+            });
+        });
+        });
+    });
 }
