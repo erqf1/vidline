@@ -1,5 +1,7 @@
 #include "music.h"
 
+#include <QGuiApplication>
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCryptographicHash>
@@ -480,7 +482,21 @@ MusicPanel::MusicPanel(MusicLibrary* lib, QWidget* parent) : QFrame(parent), lib
     songs_->setMouseTracking(true);
     songs_->setContextMenuPolicy(Qt::CustomContextMenu);
     songs_->setStyleSheet("QListWidget::item { padding: 0; }");
-    connect(songs_, &QListWidget::itemActivated, this, [this](QListWidgetItem* it) { emit play(shownPaths(), songs_->row(it)); });
+    // Ein Klick spielt den Song (Strg/Umschalt wählen wie gewohnt mehrere aus). Enter spielt auch; der Doppelklick
+    // danach startet nicht noch einmal von vorn.
+    auto playRow = [this](QListWidgetItem* it) {
+        if (!it) return;
+        const int row = songs_->row(it);
+        if (clickPlay_.isValid() && clickPlay_.elapsed() < 700 && clickRow_ == row) return;
+        clickRow_ = row;
+        clickPlay_.start();
+        emit play(shownPaths(), row);
+    };
+    connect(songs_, &QListWidget::itemClicked, this, [playRow](QListWidgetItem* it) {
+        if (QGuiApplication::keyboardModifiers() & (Qt::ControlModifier | Qt::ShiftModifier | Qt::MetaModifier)) return;
+        playRow(it);
+    });
+    connect(songs_, &QListWidget::itemActivated, this, playRow);
     connect(songs_, &QListWidget::customContextMenuRequested, this, &MusicPanel::songMenu);
     grid_ = new QListWidget;
     grid_->setViewMode(QListView::IconMode);

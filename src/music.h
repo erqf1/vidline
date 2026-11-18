@@ -1,5 +1,6 @@
 #pragma once
 #include <QDialog>
+#include <QElapsedTimer>
 #include <QFrame>
 #include <QHash>
 #include <QList>
@@ -137,6 +138,8 @@ private:
     int view_ = Songs;
     QString groupKind_, groupKey_;  // geöffnetes Album, Interpret oder Playlist
     QString nowPlaying_;
+    QElapsedTimer clickPlay_;  // Einzelklick spielt: der Doppelklick kurz danach startet nicht neu
+    int clickRow_ = -1;
     QHash<QString, QPixmap> covers_;
 };
 
