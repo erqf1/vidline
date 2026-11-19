@@ -1,5 +1,5 @@
 // Alt-Projekte für den Regressionstest (gleich in mainwindow-Tests)
-#include "model.h"
+#include "../model.h"
 static QList<QPair<QString, QStringList>> legacyCases() {
     QList<QPair<QString, QStringList>> out;
     auto src = [](const char* p, double d, bool a, bool v = true) { Source s; s.path = p; s.duration = d; s.fps = 30; s.hasAudio = a; s.video = v; s.probed = true; return s; };

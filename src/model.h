@@ -215,7 +215,17 @@ public:
         for (AudioClip& a : audios) if (a.id == id) return &a;
         return nullptr;
     }
-    Snapshot snapshot() const { return {pieces, items, audios, aspect, tracks, subs, subStyle}; }
+    // Eigene Kopie: sonst teilen sich Projekt und Rückgängig-Stand die Daten, und eine Änderung über einen vorher
+    // geholten Zeiger (Item*, AudioClip* …) landete auch im gespeicherten Stand - Rückgängig ginge dann nicht
+    Snapshot snapshot() const {
+        Snapshot s{pieces, items, audios, aspect, tracks, subs, subStyle};
+        s.pieces.detach();
+        s.items.detach();
+        s.audios.detach();
+        s.tracks.detach();
+        s.subs.detach();
+        return s;
+    }
     void restore(const Snapshot& s) {
         pieces = s.pieces; items = s.items; audios = s.audios; aspect = s.aspect;
         tracks = s.tracks; subs = s.subs; subStyle = s.subStyle;

@@ -68,6 +68,7 @@ class MainWindow : public QMainWindow, public EditorHost {
     Q_OBJECT
 public:
     MainWindow();
+    ~MainWindow() override;
     void openFile(const QString& path);
     void selfShots(const QString& dir);
     void aspectShots(const QString& dir);  // Entwickler-Test: Bildformat umstellen, rendern, exportieren

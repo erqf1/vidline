@@ -45,6 +45,8 @@ set(VIDLINE_SOURCES
     src/subtitles.cpp
     src/presets.h
     src/presets.cpp
+    src/selftests.cpp
+    src/testdata/legacy_cases.h
     src/mainwindow.h
     src/mainwindow.cpp
     src/updater.h

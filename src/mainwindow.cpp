@@ -1546,6 +1546,26 @@ void MainWindow::resizeEvent(QResizeEvent* e) {
     lblHint_->move((view_->width() - lblHint_->width()) / 2, view_->height() / 2 - 10);
 }
 
+// Erst die Player anhalten und abkoppeln: beim Zerstören liefern sie sonst noch ein Bild an onFrame, wenn das
+// Projekt schon abgebaut ist
+MainWindow::~MainWindow() {
+    if (vitem_ && vitem_->videoSink()) disconnect(vitem_->videoSink(), nullptr, this, nullptr);
+    if (player_) {
+        player_->disconnect(this);
+        player_->stop();
+    }
+    for (auto& [id, op] : ovPlayers_) {
+        op.p->disconnect(this);
+        op.p->stop();
+        op.p->setVideoOutput(static_cast<QObject*>(nullptr));
+        if (op.v->scene()) op.v->scene()->removeItem(op.v);
+        delete op.v;
+        delete op.p;
+    }
+    ovPlayers_.clear();
+    for (auto& [id, ap] : audioPlayers_) ap.p->stop();
+}
+
 void MainWindow::closeEvent(QCloseEvent* e) {
     if (exportProc_) exportProc_->kill();
     QMainWindow::closeEvent(e);
@@ -3575,7 +3595,8 @@ bool MainWindow::moveToTrack(char kind, int id, int track) {
         it.hasAudio = src.hasAudio;
         it.volume = p.volume;
         it.srcStart = p.start;
-        it.t0 = std::min(t0, std::max(0.0, total - 0.1));
+        // möglichst an derselben Stelle, aber ganz innerhalb des (jetzt kürzeren) Hauptvideos
+        it.t0 = std::clamp(t0, 0.0, std::max(0.0, total - (p.end - p.start)));
         it.t1 = std::min(total, it.t0 + (p.end - p.start));
         const MediaInfo mi = probeMedia(src.path);
         it.ar = mi.w > 0 ? double(mi.h) / mi.w : double(pr_.vh) / pr_.vw;
