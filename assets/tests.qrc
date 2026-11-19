@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/tests">
+        <file alias="golden-export.txt">../src/testdata/golden-export.txt</file>
+    </qresource>
+</RCC>

@@ -2,9 +2,21 @@
 #include <QWidget>
 #include "host.h"
 
+class QScrollArea;
+
 class Timeline : public QWidget {
 public:
+    // Zeilen der Zeitleiste von oben nach unten: V1 (Hauptvideo), weitere Video-Spuren, eigene Zeilen für Texte,
+    // Unschärfe, Zeichnungen …, Untertitel, Ton-Spuren
+    struct Row {
+        enum Kind { Main, VTrack, Lane, Subs, ATrack } kind;
+        int id = 0;  // Spur-ID (Main/VTrack/ATrack) bzw. Element-ID (Lane)
+        double y = 0, h = 0;
+    };
     explicit Timeline(EditorHost* host);
+    QList<Row> rows() const;
+    int rowAt(double y, const QList<Row>& rows) const;
+    void setHeader(QWidget* h) { header_ = h; }
     void relayout();
     void zoomBy(double factor);
     double playheadX() const { return xOf(host_->curTime()); }
@@ -21,6 +33,7 @@ protected:
     void dragMoveEvent(QDragMoveEvent*) override;
     void dragLeaveEvent(QDragLeaveEvent*) override;
     void dropEvent(QDropEvent*) override;
+    void contextMenuEvent(QContextMenuEvent*) override;
 
 private:
     static constexpr int RULER = 26, ROW = 86, WAVE = 26, LANE = 32, LEFT = 14;
@@ -32,6 +45,10 @@ private:
     QRectF pieceRect(int i) const;
     QRectF waveRect(int i) const;  // Ton-Streifen unter den Vorschaubildern
     QRectF audioRect(int k) const;
+    QRectF itemRect(const Item& it, const QList<Row>& rows) const;
+    QRectF cueRect(int i, const QList<Row>& rows) const;
+    int cueAt(const QPointF& pos) const;
+    int targetTrack(double y, bool audio) const;  // Spur unter der Maus beim Verschieben (0 = keine)
     double volLineY(const QRectF& area, double volume) const;
     Item* itemAt(const QPointF& pos);
     AudioClip* audioAt(const QPointF& pos, int* lane = nullptr);
@@ -44,7 +61,7 @@ private:
 
     struct Drag {
         // PiecePress: in einen Abschnitt geklickt - wird beim Ziehen zu Reorder (Abschnitt verschieben) bzw. Seek
-        enum Kind { None, Seek, Trim, ItemDrag, AudioDrag, PieceVol, AudioVol, PiecePress, Reorder } kind = None;
+        enum Kind { None, Seek, Trim, ItemDrag, AudioDrag, PieceVol, AudioVol, PiecePress, Reorder, CueDrag } kind = None;
         int index = 0;      // Abschnitt-Index bzw. ID
         char side = 0;      // 'l', 'r', 'm'
         double x0 = 0, a = 0, b = 0, c = 0, y0 = 0;
@@ -64,5 +81,33 @@ private:
     double dropX_ = -1;  // Markierung beim Hineinziehen
 
     EditorHost* host_;
+    QWidget* header_ = nullptr;
     double zoom_ = 1.0;
+    int dropTrack_ = 0;  // beim Ziehen eines Abschnitts/Clips: Ziel-Spur (Hervorhebung)
+    double mouseY_ = 0;
+};
+
+// Köpfe der Spuren links neben der Zeitleiste: Name, Stumm (M), Solo (S), Lautstärke; "+" legt Spuren an.
+// Scrollt senkrecht mit der Zeitleiste.
+class TrackHeader : public QWidget {
+public:
+    TrackHeader(EditorHost* host, Timeline* tl, QScrollArea* scroll);
+    static constexpr int W = 128;
+
+protected:
+    void paintEvent(QPaintEvent*) override;
+    void mousePressEvent(QMouseEvent*) override;
+    void mouseMoveEvent(QMouseEvent*) override;
+    void mouseReleaseEvent(QMouseEvent*) override;
+    void mouseDoubleClickEvent(QMouseEvent*) override;
+
+private:
+    struct Hit { int track = 0; char what = 0; QRectF r; };  // what: 'n' Name, 'm' Stumm, 's' Solo, 'v' Lautstärke, '+'
+    QList<Hit> hits() const;
+    Hit hitAt(const QPointF& p) const;
+    double offset() const;
+    EditorHost* host_;
+    Timeline* tl_;
+    QScrollArea* scroll_;
+    int volDrag_ = 0;
 };

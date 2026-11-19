@@ -41,6 +41,8 @@
 #include <QComboBox>
 #include <QSlider>
 #include "dialogs.h"
+#include "presets.h"
+#include "subtitles.h"
 #include "music.h"
 #include "videodl.h"
 #include "plugins.h"
@@ -464,6 +466,43 @@ QWidget* MainWindow::buildInspector() {
         modelEdited(true);
     });
     v->addWidget(chkAudioDenoise_);
+    // Bild/Video: Spur, Deckkraft, Ton des Videos
+    lblTrackOf_ = new QLabel;
+    lblTrackOf_->setObjectName("hint");
+    v->addWidget(lblTrackOf_);
+    lblOpacity_ = new QLabel;
+    v->addWidget(lblOpacity_);
+    sliderOpacity_ = new QSlider(Qt::Horizontal);
+    sliderOpacity_->setRange(0, 100);
+    sliderOpacity_->setFocusPolicy(Qt::NoFocus);
+    connect(sliderOpacity_, &QSlider::sliderPressed, this, &MainWindow::pushUndo);
+    connect(sliderOpacity_, &QSlider::valueChanged, this, [this](int val) {
+        Item* it = pr_.item(selItem_);
+        if (!it || !it->media()) return;
+        if (!sliderOpacity_->isSliderDown()) pushUndo();
+        it->opacity = val / 100.0;
+        lblOpacity_->setText(T("opacity") + QString("  %1 %").arg(val));
+        placeOverlayPlayers();
+        for (Overlay* ov : overlays_) ov->update();
+        timeline_->update();
+    });
+    v->addWidget(sliderOpacity_);
+    lblClipVol_ = new QLabel;
+    v->addWidget(lblClipVol_);
+    sliderClipVol_ = new QSlider(Qt::Horizontal);
+    sliderClipVol_->setRange(0, 600);
+    sliderClipVol_->setFocusPolicy(Qt::NoFocus);
+    connect(sliderClipVol_, &QSlider::sliderPressed, this, &MainWindow::pushUndo);
+    connect(sliderClipVol_, &QSlider::valueChanged, this, [this](int val) {
+        Item* it = pr_.item(selItem_);
+        if (!it || it->kind != Item::Video) return;
+        if (!sliderClipVol_->isSliderDown()) pushUndo();
+        it->volume = val / 100.0;
+        lblClipVol_->setText(T("volume") + QString("  %1 %").arg(val));
+        updateAudio(false);
+        timeline_->update();
+    });
+    v->addWidget(sliderClipVol_);
 
     textBox_ = new QWidget;
     auto* tv = new QVBoxLayout(textBox_);
@@ -546,6 +585,8 @@ QWidget* MainWindow::buildInspector() {
     v->addWidget(btnDelEl_);
     v->addStretch();
     insp_->addWidget(pg);
+    insp_->addWidget(buildTrackPage());     // 3: Spur
+    insp_->addWidget(buildSubtitlePage());  // 4: Untertitel
 
     // Medien links vom Video, Eigenschaften rechts davon - beide immer sichtbar
     auto card = [](int width) {
@@ -586,6 +627,187 @@ QWidget* MainWindow::buildInspector() {
                               "QScrollArea#plain > QWidget > QWidget { background: transparent; }");
     cl->addWidget(inspScroll, 1);
     return inspCard_;
+}
+
+QLabel* MainWindow::tl(const char* key) {
+    auto* l = new QLabel(T(key));
+    tlabels_.push_back({l, key});
+    return l;
+}
+
+QWidget* MainWindow::buildTrackPage() {
+    auto* pg = new QWidget;
+    auto* v = new QVBoxLayout(pg);
+    v->setSpacing(10);
+    lblTrackTitle_ = new QLabel;
+    lblTrackTitle_->setObjectName("title");
+    v->addWidget(lblTrackTitle_);
+    lblTrackVol_ = new QLabel;
+    v->addWidget(lblTrackVol_);
+    sliderTrackVol_ = new QSlider(Qt::Horizontal);
+    sliderTrackVol_->setRange(0, 200);
+    sliderTrackVol_->setFocusPolicy(Qt::NoFocus);
+    connect(sliderTrackVol_, &QSlider::sliderPressed, this, &MainWindow::pushUndo);
+    connect(sliderTrackVol_, &QSlider::valueChanged, this, [this](int val) {
+        Track* t = pr_.track(selTrack_);
+        if (!t) return;
+        if (!sliderTrackVol_->isSliderDown()) pushUndo();
+        t->volume = val / 100.0;
+        lblTrackVol_->setText(T("track_volume") + QString("  %1 %").arg(val));
+        tracksChanged();
+    });
+    v->addWidget(sliderTrackVol_);
+    chkTrackMute_ = new QCheckBox;
+    chkTrackSolo_ = new QCheckBox;
+    for (QCheckBox* c : {chkTrackMute_, chkTrackSolo_}) {
+        c->setFocusPolicy(Qt::NoFocus);
+        connect(c, &QCheckBox::toggled, this, [this, c](bool on) {
+            Track* t = pr_.track(selTrack_);
+            if (!t) return;
+            bool& flag = c == chkTrackMute_ ? t->mute : t->solo;
+            if (flag == on) return;
+            pushUndo();
+            flag = on;
+            tracksChanged();
+        });
+        v->addWidget(c);
+    }
+    lblTrackInfo_ = new QLabel;
+    lblTrackInfo_->setObjectName("hint");
+    lblTrackInfo_->setWordWrap(true);
+    v->addWidget(lblTrackInfo_);
+    btnDelTrack_ = mk("delete_track", nullptr, Ic::Trash);
+    connect(btnDelTrack_, &QPushButton::clicked, this, [this] {
+        const Track* t = pr_.track(selTrack_);
+        if (!t || t->id == kMainTrack) return;
+        const int id = t->id;
+        pushUndo();
+        pr_.items.erase(std::remove_if(pr_.items.begin(), pr_.items.end(), [id](const Item& it) { return it.track == id; }), pr_.items.end());
+        pr_.audios.erase(std::remove_if(pr_.audios.begin(), pr_.audios.end(), [this, id](const AudioClip& a) { return pr_.audioTrackOf(a) == id; }), pr_.audios.end());
+        pr_.tracks.erase(std::remove_if(pr_.tracks.begin(), pr_.tracks.end(), [id](const Track& x) { return x.id == id; }), pr_.tracks.end());
+        selTrack_ = 0;
+        modelEdited();
+    });
+    v->addWidget(btnDelTrack_);
+    v->addStretch();
+    return pg;
+}
+
+QWidget* MainWindow::buildSubtitlePage() {
+    auto* pg = new QWidget;
+    auto* v = new QVBoxLayout(pg);
+    v->setSpacing(8);
+    auto* title = tl("subtitle");
+    title->setObjectName("title");
+    v->addWidget(title);
+    subEdit_ = new QPlainTextEdit;
+    subEdit_->setFixedHeight(64);
+    connect(subEdit_, &QPlainTextEdit::textChanged, this, [this] {
+        if (selSub_ < 0 || selSub_ >= pr_.subs.size() || pr_.subs[selSub_].text == subEdit_->toPlainText()) return;
+        if (!subUndo_) { pushUndo(); subUndo_ = true; }
+        pr_.subs[selSub_].text = subEdit_->toPlainText();
+        subKey_.clear();
+        updateSubtitlePreview();
+        timeline_->update();
+    });
+    v->addWidget(subEdit_);
+    auto* times = new QHBoxLayout;
+    spSubT0_ = new QDoubleSpinBox;
+    spSubT1_ = new QDoubleSpinBox;
+    for (QDoubleSpinBox* sp : {spSubT0_, spSubT1_}) {
+        sp->setRange(0, 36000);
+        sp->setDecimals(2);
+        sp->setSingleStep(0.1);
+        sp->setSuffix(" s");
+        sp->setButtonSymbols(QAbstractSpinBox::NoButtons);
+        connect(sp, &QDoubleSpinBox::editingFinished, this, [this] {
+            if (selSub_ < 0 || selSub_ >= pr_.subs.size()) return;
+            pushUndo();
+            SubCue& c = pr_.subs[selSub_];
+            c.t0 = std::clamp(spSubT0_->value(), 0.0, pr_.total());
+            c.t1 = std::clamp(spSubT1_->value(), c.t0 + 0.1, std::max(c.t0 + 0.1, pr_.total()));
+            modelEdited(true);
+        });
+    }
+    times->addWidget(tl("start_s"));
+    times->addWidget(spSubT0_, 1);
+    times->addWidget(tl("end_s"));
+    times->addWidget(spSubT1_, 1);
+    v->addLayout(times);
+    auto* rowB = new QHBoxLayout;
+    auto* bAdd = mk("sub_add", nullptr, Ic::Plus);
+    auto* bDel = mk("delete_el", nullptr, Ic::Trash);
+    connect(bAdd, &QPushButton::clicked, this, &MainWindow::addSubtitleAtPlayhead);
+    connect(bDel, &QPushButton::clicked, this, &MainWindow::deleteSelected);
+    rowB->addWidget(bAdd);
+    rowB->addWidget(bDel);
+    v->addLayout(rowB);
+    v->addSpacing(6);
+    auto* look = tl("sub_style");
+    look->setObjectName("title");
+    v->addWidget(look);
+    auto* hint = tl("sub_style_hint");
+    hint->setObjectName("hint");
+    hint->setWordWrap(true);
+    v->addWidget(hint);
+    v->addWidget(tl("font"));
+    subFont_ = new QComboBox;
+    subFont_->setMaxVisibleItems(16);
+    connect(subFont_, &QComboBox::activated, this, [this] { editSubStyle([this](SubStyle& st) { st.font = subFont_->currentData().toString(); }); });
+    v->addWidget(subFont_);
+    lblSubSize_ = new QLabel;
+    v->addWidget(lblSubSize_);
+    subSize_ = new QSlider(Qt::Horizontal);
+    subSize_->setRange(20, 140);
+    subSize_->setFocusPolicy(Qt::NoFocus);
+    connect(subSize_, &QSlider::sliderPressed, this, &MainWindow::pushUndo);
+    connect(subSize_, &QSlider::valueChanged, this, [this](int val) {
+        if (!subSize_->isSliderDown()) pushUndo();
+        pr_.subStyle.size = val;
+        lblSubSize_->setText(T("size") + QString("  %1").arg(val));
+        subKey_.clear();
+        updateSubtitlePreview();
+    });
+    v->addWidget(subSize_);
+    v->addWidget(tl("position"));
+    subPos_ = new QComboBox;
+    connect(subPos_, &QComboBox::activated, this, [this](int i) { editSubStyle([i](SubStyle& st) { st.pos = i; }); });
+    v->addWidget(subPos_);
+    v->addWidget(tl("sub_look"));
+    subLook_ = new QComboBox;
+    connect(subLook_, &QComboBox::activated, this, [this](int i) { editSubStyle([i](SubStyle& st) { st.look = i; }); });
+    v->addWidget(subLook_);
+    auto* crow = new QHBoxLayout;
+    btnSubColor_ = new QPushButton;
+    btnSubEdge_ = new QPushButton;
+    for (QPushButton* b : {btnSubColor_, btnSubEdge_}) {
+        b->setFixedSize(34, 26);
+        b->setFocusPolicy(Qt::NoFocus);
+        connect(b, &QPushButton::clicked, this, [this, b] {
+            SubStyle& st = pr_.subStyle;
+            unsigned& c = b == btnSubColor_ ? st.color : (st.look == 1 ? st.boxColor : st.edgeColor);
+            const QColor nc = QColorDialog::getColor(QColor::fromRgba(c), this, T("color"), QColorDialog::ShowAlphaChannel);
+            if (!nc.isValid()) return;
+            editSubStyle([&c, nc](SubStyle&) { c = nc.rgba(); });
+        });
+    }
+    crow->addWidget(tl("color"));
+    crow->addWidget(btnSubColor_);
+    crow->addSpacing(10);
+    crow->addWidget(tl("sub_edge"));
+    crow->addWidget(btnSubEdge_);
+    crow->addStretch();
+    v->addLayout(crow);
+    v->addStretch();
+    return pg;
+}
+
+void MainWindow::editSubStyle(const std::function<void(SubStyle&)>& fn) {
+    pushUndo();
+    fn(pr_.subStyle);
+    subKey_.clear();
+    updateSubtitlePreview();
+    refreshInspector();
 }
 
 void MainWindow::buildUi() {
@@ -748,9 +970,9 @@ void MainWindow::buildUi() {
 
     // Werkzeuge
     tools_ = new QWidget;
-    auto* tl = new QHBoxLayout(tools_);
-    tl->setContentsMargins(0, 0, 0, 0);
-    tl->setSpacing(8);
+    auto* tlay = new QHBoxLayout(tools_);
+    tlay->setContentsMargins(0, 0, 0, 0);
+    tlay->setSpacing(8);
     struct ToolDef { const char* text; const char* tip; Ic ic; const char* suffix; void (MainWindow::*fn)(); };
     const ToolDef list[] = {
         {"split", nullptr, Ic::Scissors, "@split", &MainWindow::doSplit},
@@ -761,13 +983,13 @@ void MainWindow::buildUi() {
     for (const ToolDef& t : list) {
         auto* b = mk(t.text, t.tip, t.ic, "tool", t.suffix);
         connect(b, &QPushButton::clicked, this, [this, fn = t.fn] { (this->*fn)(); });
-        tl->addWidget(b);
+        tlay->addWidget(b);
     }
     // Zeichnen (an/aus) und Formen (Menü: Rechteck, Kreis, Pfeil, Linie)
     btnDraw_ = mk("draw", nullptr, Ic::Pen, "tool", "@draw");
     btnDraw_->setCheckable(true);
     connect(btnDraw_, &QPushButton::clicked, this, [this] { setTool(tool_ == 1 ? 0 : 1); });
-    tl->addWidget(btnDraw_);
+    tlay->addWidget(btnDraw_);
     btnShape_ = mk("shape", nullptr, Ic::Shapes, "tool", "@shape");
     btnShape_->setCheckable(true);
     auto* shapeMenu = new QMenu(btnShape_);
@@ -779,29 +1001,50 @@ void MainWindow::buildUi() {
     });
     connect(shapeMenu, &QMenu::aboutToHide, this, [this] { btnShape_->setChecked(tool_ == 2); });
     btnShape_->setMenu(shapeMenu);
-    tl->addWidget(btnShape_);
+    tlay->addWidget(btnShape_);
+    // Untertitel-Plugin: erzeugen, bearbeiten, importieren, speichern
+    btnSubs_ = mk("subtitles", "sub_tip", Ic::Subtitles, "tool");
+    auto* subMenu = new QMenu(btnSubs_);
+    connect(subMenu, &QMenu::aboutToShow, this, [this, subMenu] {
+        subMenu->clear();
+        subMenu->addAction(T("sub_auto") + QString::fromUtf8("…"), this, &MainWindow::autoSubtitles);
+        subMenu->addAction(T("sub_add"), this, &MainWindow::addSubtitleAtPlayhead);
+        subMenu->addAction(T("sub_import") + QString::fromUtf8("…"), this, &MainWindow::importSubtitles);
+        subMenu->addSeparator();
+        QAction* a1 = subMenu->addAction(T("sub_save_srt") + QString::fromUtf8("…"), this, [this] { saveSubtitles(false); });
+        QAction* a2 = subMenu->addAction(T("sub_save_vtt") + QString::fromUtf8("…"), this, [this] { saveSubtitles(true); });
+        QAction* a3 = subMenu->addAction(T("sub_clear"), this, [this] {
+            pushUndo();
+            pr_.subs.clear();
+            selSub_ = -1;
+            modelEdited(true);
+        });
+        for (QAction* a : {a1, a2, a3}) a->setEnabled(!pr_.subs.isEmpty());
+    });
+    btnSubs_->setMenu(subMenu);
+    tlay->addWidget(btnSubs_);
     for (const ToolDef& t : {ToolDef{nullptr, "undo", Ic::Undo, "@undo", &MainWindow::doUndo},
                        ToolDef{nullptr, "redo", Ic::Redo, "@redo", &MainWindow::doRedo}}) {
         auto* b = mk(t.text, t.tip, t.ic, "tool", t.suffix);
         connect(b, &QPushButton::clicked, this, [this, fn = t.fn] { (this->*fn)(); });
-        tl->addWidget(b);
+        tlay->addWidget(b);
     }
-    tl->addSpacing(8);
+    tlay->addSpacing(8);
     lblAspect_ = new QLabel;
     lblAspect_->setObjectName("hint");
-    tl->addWidget(lblAspect_);
+    tlay->addWidget(lblAspect_);
     aspectBox_ = new QComboBox;
     for (int i = 0; i < kAspectCount; ++i) aspectBox_->addItem(kAspects[i].label ? QString::fromUtf8(kAspects[i].label) : QString());
     aspectBox_->setFocusPolicy(Qt::NoFocus);  // Tastenkürzel (S, Q, W …) bleiben beim Editor
     connect(aspectBox_, &QComboBox::activated, this, [this](int i) { setAspect(i); });
-    tl->addWidget(aspectBox_);
-    tl->addStretch();
+    tlay->addWidget(aspectBox_);
+    tlay->addStretch();
     auto* zOut = mk(nullptr, "zoom_out", Ic::ZoomOut, "tool", "@zoom_out");
     auto* zIn = mk(nullptr, "zoom_in", Ic::ZoomIn, "tool", "@zoom_in");
     connect(zOut, &QPushButton::clicked, this, [this] { timeline_->zoomBy(1 / 1.6); });
     connect(zIn, &QPushButton::clicked, this, [this] { timeline_->zoomBy(1.6); });
-    tl->addWidget(zOut);
-    tl->addWidget(zIn);
+    tlay->addWidget(zOut);
+    tlay->addWidget(zIn);
 
     // Timeline
     timeline_ = new Timeline(this);
@@ -810,6 +1053,11 @@ void MainWindow::buildUi() {
     tlScroll_->setWidgetResizable(false);
     tlScroll_->setMinimumHeight(130);
     tlScroll_->viewport()->installEventFilter(this);
+    trackHeader_ = new TrackHeader(this, timeline_, tlScroll_);
+    subItem_ = scene_->addPixmap(QPixmap());
+    subItem_->setZValue(20);
+    subItem_->setTransformationMode(Qt::SmoothTransformation);
+    subItem_->setAcceptedMouseButtons(Qt::NoButton);
 
     // Bereiche mit Trennern: Medien | Video | Eigenschaften, darunter Abspielen + Werkzeuge + Zeitleiste.
     // Alles per Ziehen größer und kleiner (Größen werden gemerkt).
@@ -830,7 +1078,12 @@ void MainWindow::buildUi() {
     eb->setSpacing(10);
     eb->addWidget(transport_);
     eb->addWidget(tools_);
-    eb->addWidget(tlScroll_, 1);
+    auto* tlRow = new QHBoxLayout;  // Spurköpfe links, Zeitleiste rechts
+    tlRow->setContentsMargins(0, 0, 0, 0);
+    tlRow->setSpacing(6);
+    tlRow->addWidget(trackHeader_);
+    tlRow->addWidget(tlScroll_, 1);
+    eb->addLayout(tlRow, 1);
     vSplit_ = new QSplitter(Qt::Vertical);
     vSplit_->setChildrenCollapsible(false);
     vSplit_->setHandleWidth(10);
@@ -1121,6 +1374,16 @@ void MainWindow::retranslate() {
         }
         s.b->setToolTip(tip + suffix);
     }
+    for (auto& [l, key] : tlabels_) l->setText(T(key));
+    if (subPos_) {
+        QSignalBlocker b1(subPos_), b2(subLook_);
+        subPos_->clear();
+        subPos_->addItems({T("pos_bottom"), T("pos_middle"), T("pos_top")});
+        subLook_->clear();
+        subLook_->addItems({T("look_edge"), T("look_box"), T("look_shadow")});
+        chkTrackMute_->setText(T("track_mute"));
+        chkTrackSolo_->setText(T("track_solo"));
+    }
     lblHint_->setText(T("drop_hint"));
     lblHint_->adjustSize();
     lblInspHint_->setText(T("insp_hint"));
@@ -1268,6 +1531,7 @@ void MainWindow::setBoost(bool on) {
     if (!pending_ && cur_ >= 0 && cur_ < pr_.pieces.size()) player_->setPlaybackRate(pr_.pieces[cur_].speed * boost_);
     if (pending_ && cur_ >= 0 && cur_ < pr_.pieces.size()) pendingRate_ = pr_.pieces[cur_].speed * boost_;
     for (auto& [id, ap] : audioPlayers_) ap.p->setPlaybackRate(boost_);
+    for (auto& [id, op] : ovPlayers_) op.p->setPlaybackRate(boost_);
     boostLbl_->setVisible(on);
     if (on) {
         placeVideoControls();
@@ -1338,6 +1602,7 @@ void MainWindow::applyLayoutVisibility() {
     musicPanel_->setVisible(music && btnLib_->isChecked() && !edit && !fullscreen_);
     btnLib_->setVisible(music && !edit);
     btnVdl_->setVisible(pluginEnabled("videodl") && !edit);
+    if (btnSubs_) btnSubs_->setVisible(pluginEnabled("subtitles"));
     updateQueueButtons();
     if (fullscreen_) {
         rootLayout_->setContentsMargins(0, 0, 0, 0);
@@ -1449,6 +1714,17 @@ void MainWindow::openFile(const QString& path) {
     player_->stop();
     for (auto& [id, ap] : audioPlayers_) { ap.p->stop(); ap.p->deleteLater(); ap.out->deleteLater(); }
     audioPlayers_.clear();
+    for (auto& [id, op] : ovPlayers_) {
+        op.p->stop();
+        scene_->removeItem(op.v);
+        op.p->deleteLater();
+        op.out->deleteLater();
+        delete op.v;
+    }
+    ovPlayers_.clear();
+    selSub_ = -1;
+    selTrack_ = 0;
+    subKey_.clear();
     setTool(0);
     setBoost(false);
     pr_ = Project();
@@ -1723,7 +1999,7 @@ void MainWindow::activate(int i, double srcPos, bool play) {
 
 void MainWindow::applyPlayerVolume() {
     const double pv = cur_ >= 0 && cur_ < pr_.pieces.size() ? pr_.pieces[cur_].volume : 1.0;
-    audio_->setVolume(float(std::clamp(pv * effectiveVolume(), 0.0, 1.0)));
+    audio_->setVolume(float(std::clamp(pv * pr_.trackGain(kMainTrack) * effectiveVolume(), 0.0, 1.0)));
 }
 
 void MainWindow::setMasterVolume(double v, bool hint) {
@@ -1962,6 +2238,7 @@ void MainWindow::updateUi() {
     for (Overlay* ov : overlays_) {
         if (Item* it = pr_.item(ov->itemId())) ov->setVisible(it->t0 <= t_ && t_ < it->t1);
     }
+    updateSubtitlePreview();
     timeline_->update();
 }
 
@@ -1993,7 +2270,7 @@ void MainWindow::updateAudio(bool force) {
     for (auto& [id, ap] : audioPlayers_) {
         AudioClip* a = pr_.audio(id);
         if (!a) continue;
-        ap.out->setVolume(float(std::clamp(a->volume * effectiveVolume(), 0.0, 1.0)));
+        ap.out->setVolume(float(std::clamp(a->volume * pr_.trackGain(pr_.audioTrackOf(*a)) * effectiveVolume(), 0.0, 1.0)));
         const bool inRange = t_ >= a->t0 && t_ < a->t0 + a->dur;
         if (playing && inRange) {
             qint64 want = qint64((a->srcStart + (t_ - a->t0)) * 1000);
@@ -2006,6 +2283,69 @@ void MainWindow::updateAudio(bool force) {
         } else if (ap.p->playbackState() == QMediaPlayer::PlayingState) {
             ap.p->pause();
         }
+    }
+    // Overlay-Videos: sichtbar nur in ihrem Bereich, laufen mit; angehalten zeigen sie das Bild an der Stelle
+    for (auto& [id, op] : ovPlayers_) {
+        const Item* it = pr_.item(id);
+        if (!it) continue;
+        const bool inRange = t_ >= it->t0 && t_ < it->t1;
+        op.v->setVisible(inRange);
+        op.out->setVolume(float(std::clamp(it->volume * pr_.trackGain(it->track) * effectiveVolume(), 0.0, 1.0)));
+        const qint64 want = qint64((it->srcStart + std::max(0.0, t_ - it->t0)) * 1000);
+        if (playing && inRange) {
+            if (op.p->playbackState() != QMediaPlayer::PlayingState) {
+                op.p->setPosition(want);
+                op.p->play();
+            } else if (force || std::llabs(op.p->position() - want) > 300) {
+                op.p->setPosition(want);
+            }
+        } else {
+            if (op.p->playbackState() == QMediaPlayer::PlayingState) op.p->pause();
+            if (inRange && (force || std::llabs(op.p->position() - want) > 80)) op.p->setPosition(want);
+        }
+    }
+}
+
+void MainWindow::syncOverlayPlayers() {
+    for (auto it = ovPlayers_.begin(); it != ovPlayers_.end();) {
+        const Item* c = pr_.item(it->first);
+        if (!c || c->kind != Item::Video || !pr_.track(c->track)) {
+            it->second.p->stop();
+            scene_->removeItem(it->second.v);
+            it->second.p->deleteLater();
+            it->second.out->deleteLater();
+            delete it->second.v;
+            it = ovPlayers_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (const Item& c : pr_.items) {
+        if (c.kind != Item::Video || ovPlayers_.count(c.id) || !pr_.track(c.track)) continue;
+        OverlayPlayer op{new QMediaPlayer(this), new QAudioOutput(this), new QGraphicsVideoItem};
+        op.v->setAspectRatioMode(Qt::IgnoreAspectRatio);
+        op.v->setAcceptedMouseButtons(Qt::NoButton);
+        scene_->addItem(op.v);
+        op.p->setVideoOutput(op.v);
+        op.p->setAudioOutput(op.out);
+        op.out->setMuted(silent_);
+        op.p->setPlaybackRate(boost_);
+        op.p->setSource(playUrl(c.path));
+        op.p->pause();
+        ovPlayers_[c.id] = op;
+    }
+    placeOverlayPlayers();
+}
+
+// Lage, Größe, Deckkraft und Stapelreihenfolge (höhere Spur liegt oben) der Overlay-Videos
+void MainWindow::placeOverlayPlayers() {
+    for (auto& [id, op] : ovPlayers_) {
+        const Item* c = pr_.item(id);
+        if (!c) continue;
+        op.v->setPos(c->x * pr_.vw, c->y * pr_.vh);
+        op.v->setSize(QSizeF(c->w * pr_.vw, c->h * pr_.vh));
+        op.v->setOpacity(std::clamp(c->opacity, 0.0, 1.0));
+        op.v->setZValue(2 + pr_.trackIndex(c->track) * 0.01);
     }
 }
 
@@ -2092,8 +2432,15 @@ void MainWindow::modelEdited(bool keepTime) {
     if (!keepTime) {
         rebuildOverlays();
         syncAudioPlayers();
+        syncOverlayPlayers();
+    } else {
+        placeOverlayPlayers();
     }
+    if (selSub_ >= pr_.subs.size()) selSub_ = -1;
+    if (selTrack_ && !pr_.track(selTrack_)) selTrack_ = 0;
+    subKey_.clear();
     timeline_->relayout();
+    if (trackHeader_) trackHeader_->update();
     refreshInspector();
     if (!keepTime) seek(t_);
     applyPlayerVolume();
@@ -2111,6 +2458,8 @@ void MainWindow::rebuildOverlays() {
     for (const Item& it : pr_.items) {
         auto* ov = new Overlay(it.id, this);
         ov->setAcceptedMouseButtons(showGuides() ? Qt::LeftButton : Qt::NoButton);
+        if (const Track* t = pr_.track(it.track); t && !t->audio && it.track != kMainTrack)
+            ov->setZValue(2 + pr_.trackIndex(it.track) * 0.01 + 0.005);  // Spur-Clips unter Texten & Co.
         scene_->addItem(ov);
         overlays_.push_back(ov);
     }
@@ -2119,7 +2468,7 @@ void MainWindow::rebuildOverlays() {
 
 void MainWindow::selectPiece(int i) {
     selPiece_ = i;
-    if (i >= 0) { selItem_ = 0; selAudio_ = 0; }
+    if (i >= 0) { selItem_ = 0; selAudio_ = 0; selSub_ = -1; selTrack_ = 0; }
     refreshInspector();
     timeline_->update();
     for (Overlay* ov : overlays_) ov->update();
@@ -2127,7 +2476,7 @@ void MainWindow::selectPiece(int i) {
 
 void MainWindow::selectItem(int id) {
     selItem_ = id;
-    if (id) { selPiece_ = -1; selAudio_ = 0; }
+    if (id) { selPiece_ = -1; selAudio_ = 0; selSub_ = -1; selTrack_ = 0; }
     refreshInspector();
     timeline_->update();
     for (Overlay* ov : overlays_) ov->update();
@@ -2135,20 +2484,104 @@ void MainWindow::selectItem(int id) {
 
 void MainWindow::selectAudio(int id) {
     selAudio_ = id;
-    if (id) { selPiece_ = -1; selItem_ = 0; }
+    if (id) { selPiece_ = -1; selItem_ = 0; selSub_ = -1; selTrack_ = 0; }
     refreshInspector();
     timeline_->update();
     for (Overlay* ov : overlays_) ov->update();
+}
+
+void MainWindow::selectSub(int i) {
+    selSub_ = i;
+    if (i >= 0) { selPiece_ = -1; selItem_ = 0; selAudio_ = 0; selTrack_ = 0; }
+    refreshInspector();
+    timeline_->update();
+    for (Overlay* ov : overlays_) ov->update();
+}
+
+void MainWindow::selectTrack(int id) {
+    selTrack_ = id;
+    if (id) { selPiece_ = -1; selItem_ = 0; selAudio_ = 0; selSub_ = -1; }
+    refreshInspector();
+    timeline_->update();
+    if (trackHeader_) trackHeader_->update();
+    for (Overlay* ov : overlays_) ov->update();
+}
+
+void MainWindow::tracksChanged() {
+    applyPlayerVolume();
+    updateAudio(false);
+    timeline_->update();
+    if (trackHeader_) trackHeader_->update();
+    if (selTrack_) refreshInspector();
 }
 
 void MainWindow::refreshInspector() {
     Item* it = selItem_ ? pr_.item(selItem_) : nullptr;
     AudioClip* au = selAudio_ ? pr_.audio(selAudio_) : nullptr;
     // Neue Auswahl -> Eigenschaften zeigen
-    const QString sel = QString("%1/%2/%3").arg(selPiece_).arg(selItem_).arg(selAudio_);
+    const QString sel = QString("%1/%2/%3/%4/%5").arg(selPiece_).arg(selItem_).arg(selAudio_).arg(selSub_).arg(selTrack_);
     if (sel != lastSel_) {
         lastSel_ = sel;
         textUndo_ = false;
+        subUndo_ = false;
+    }
+    const bool media = it && it->media();
+    lblTrackOf_->setVisible(media || au);
+    lblOpacity_->setVisible(media);
+    sliderOpacity_->setVisible(media);
+    lblClipVol_->setVisible(it && it->kind == Item::Video);
+    sliderClipVol_->setVisible(it && it->kind == Item::Video);
+    if (media) {
+        const Track* t = pr_.track(it->track);
+        lblTrackOf_->setText(T("track") + ": " + (t && !t->audio ? pr_.trackName(it->track) : T("own_lane")));
+        lblOpacity_->setText(T("opacity") + QString("  %1 %").arg(qRound(it->opacity * 100)));
+        { QSignalBlocker b(sliderOpacity_); sliderOpacity_->setValue(qRound(it->opacity * 100)); }
+        lblClipVol_->setText(T("volume") + QString("  %1 %").arg(qRound(it->volume * 100)));
+        { QSignalBlocker b(sliderClipVol_); sliderClipVol_->setValue(qRound(it->volume * 100)); }
+    } else if (au) {
+        lblTrackOf_->setText(T("track") + ": " + pr_.trackName(pr_.audioTrackOf(*au)));
+    }
+    if (const Track* t = selTrack_ ? pr_.track(selTrack_) : nullptr) {
+        insp_->setCurrentIndex(3);
+        lblTrackTitle_->setText(T("track") + " " + pr_.trackName(t->id) + (t->id == kMainTrack ? "  ·  " + T("main_video") : QString()));
+        lblTrackVol_->setText(T("track_volume") + QString("  %1 %").arg(qRound(t->volume * 100)));
+        { QSignalBlocker b(sliderTrackVol_); sliderTrackVol_->setValue(qRound(t->volume * 100)); }
+        { QSignalBlocker b(chkTrackMute_); chkTrackMute_->setChecked(t->mute); }
+        { QSignalBlocker b(chkTrackSolo_); chkTrackSolo_->setChecked(t->solo); }
+        int n = 0;
+        for (const Item& x : pr_.items) n += x.track == t->id;
+        for (const AudioClip& a : pr_.audios) n += t->audio && pr_.audioTrackOf(a) == t->id;
+        if (t->id == kMainTrack) n = pr_.pieces.size();
+        lblTrackInfo_->setText(T("track_clips").arg(n) + "\n" + T(t->audio ? "track_hint_a" : "track_hint_v"));
+        btnDelTrack_->setVisible(t->id != kMainTrack);
+        return;
+    }
+    if (selSub_ >= 0 && selSub_ < pr_.subs.size()) {
+        insp_->setCurrentIndex(4);
+        const SubCue& c = pr_.subs[selSub_];
+        if (subEdit_->toPlainText() != c.text) { QSignalBlocker b(subEdit_); subEdit_->setPlainText(c.text); }
+        { QSignalBlocker b(spSubT0_); spSubT0_->setValue(c.t0); }
+        { QSignalBlocker b(spSubT1_); spSubT1_->setValue(c.t1); }
+        ensureFonts();
+        if (subFont_->count() != fontBox_->count() + 1) {
+            QSignalBlocker b(subFont_);
+            subFont_->clear();
+            subFont_->addItem(T("font_default"), QString());
+            for (int i = 0; i < fontBox_->count(); ++i) subFont_->addItem(fontBox_->itemText(i), fontBox_->itemData(i));
+        }
+        const SubStyle& st = pr_.subStyle;
+        { QSignalBlocker b(subFont_); subFont_->setCurrentIndex(std::max(0, subFont_->findData(st.font))); }
+        { QSignalBlocker b(subSize_); subSize_->setValue(qRound(st.size)); }
+        lblSubSize_->setText(T("size") + QString("  %1").arg(qRound(st.size)));
+        { QSignalBlocker b(subPos_); subPos_->setCurrentIndex(st.pos); }
+        { QSignalBlocker b(subLook_); subLook_->setCurrentIndex(st.look); }
+        auto swatch = [](QPushButton* btn, unsigned argb) {
+            btn->setStyleSheet(QString("QPushButton { background: %1; border: 1px solid #888; border-radius: 5px; }")
+                                   .arg(QColor::fromRgba(argb).name(QColor::HexArgb)));
+        };
+        swatch(btnSubColor_, st.color);
+        swatch(btnSubEdge_, st.look == 1 ? st.boxColor : st.edgeColor);
+        return;
     }
     if (it && it->kind == Item::Text) ensureFonts();
     textBox_->setVisible(it && it->kind == Item::Text);
@@ -2170,7 +2603,7 @@ void MainWindow::refreshInspector() {
     } else if (it) {
         insp_->setCurrentIndex(2);
         static const char* shapeKeys[] = {"shape_rect", "shape_ellipse", "shape_arrow", "shape_line"};
-        lblItem_->setText(it->kind == Item::Image ? T("image") : it->kind == Item::Text ? T("text")
+        lblItem_->setText(it->kind == Item::Image ? T("image") : it->kind == Item::Video ? T("video_clip") : it->kind == Item::Text ? T("text")
                           : it->kind == Item::Draw ? T("drawing")
                           : it->kind == Item::Shape ? T(shapeKeys[std::clamp(it->shape, 0, 3)]) : T("blur_area"));
         { QSignalBlocker b(spT0_); spT0_->setValue(it->t0); }
@@ -2256,6 +2689,7 @@ void MainWindow::itemTimesChanged() {
     pushUndo();
     it->t0 = std::min(spT0_->value(), total);
     it->t1 = std::max(it->t0 + 0.1, std::min(spT1_->value(), total));
+    if (it->kind == Item::Video) it->t1 = std::min(it->t1, it->t0 + std::max(0.1, it->fileDur - it->srcStart));
     modelEdited(true);
 }
 
@@ -2291,6 +2725,14 @@ void MainWindow::sliderChanged(int v) {
 }
 
 void MainWindow::deleteSelected() {
+    if (selSub_ >= 0 && selSub_ < pr_.subs.size()) {
+        pushUndo();
+        pr_.subs.removeAt(selSub_);
+        selSub_ = std::min<int>(selSub_, pr_.subs.size() - 1);
+        modelEdited(true);
+        refreshInspector();
+        return;
+    }
     if (selAudio_) {
         for (int i = 0; i < pr_.audios.size(); ++i)
             if (pr_.audios[i].id == selAudio_) {
@@ -2352,6 +2794,7 @@ void MainWindow::doSplit() {
             Item b = it;
             b.id = pr_.nextId++;
             b.t0 = t;
+            if (it.kind == Item::Video) b.srcStart = it.srcStart + (t - it.t0);
             it.t1 = t;
             pr_.items.insert(i + 1, b);
             return true;
@@ -2360,7 +2803,16 @@ void MainWindow::doSplit() {
     };
     pushUndo();
     bool changed = false;
-    if (selAudio_) {
+    if (selSub_ >= 0 && selSub_ < pr_.subs.size()) {
+        SubCue& c = pr_.subs[selSub_];
+        if (t - c.t0 >= kMinPiece && c.t1 - t >= kMinPiece) {
+            SubCue b = c;
+            b.t0 = t;
+            c.t1 = t;
+            pr_.subs.insert(selSub_ + 1, b);
+            changed = true;
+        }
+    } else if (selAudio_) {
         changed = splitAudio(selAudio_);
     } else if (selItem_) {
         changed = splitItem(selItem_);
@@ -2383,7 +2835,7 @@ void MainWindow::doSplit() {
 }
 
 void MainWindow::doDelete() {
-    if (selItem_ || selAudio_) return deleteSelected();
+    if (selItem_ || selAudio_ || selSub_ >= 0) return deleteSelected();
     if (pr_.pieces.size() < 2 || selPiece_ < 0 || selPiece_ >= pr_.pieces.size()) return;
     pushUndo();
     pr_.pieces.removeAt(selPiece_);
@@ -2634,6 +3086,23 @@ QWidget* MainWindow::buildMediaPage() {
     bin_->setStyleSheet("QListWidget::item { padding: 2px; }");
     connect(bin_, &QListWidget::itemDoubleClicked, this,
             [this](QListWidgetItem* it) { insertFromBin(it->data(Qt::UserRole).toString()); });
+    // Rechtsklick: an der Abspielposition, als Bild-im-Bild (Video-Spur) oder auf eine eigene Ton-Spur
+    bin_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(bin_, &QListWidget::customContextMenuRequested, this, [this](const QPoint& at) {
+        QListWidgetItem* it = bin_->itemAt(at);
+        if (!it || pr_.pieces.isEmpty()) return;
+        const QString path = it->data(Qt::UserRole).toString();
+        const MediaKind kind = mediaKindOf(path);
+        QMenu m(this);
+        m.addAction(T("bin_insert"), this, [this, path] { insertFromBin(path); });
+        if (kind != MediaKind::Audio)
+            m.addAction(makeIcon(Ic::Layers, currentTheme().text), T("bin_overlay"), this,
+                        [this, path] { insertMediaOnTrack(path, t_, pr_.addTrack(false)); });
+        if (kind != MediaKind::Image)
+            m.addAction(makeIcon(Ic::Music, currentTheme().text), T("bin_audio_track"), this,
+                        [this, path] { insertMediaOnTrack(path, t_, pr_.addTrack(true)); });
+        m.exec(bin_->viewport()->mapToGlobal(at));
+    });
     v->addWidget(bin_, 1);
     lblBinHint_ = new QLabel;
     lblBinHint_->setObjectName("hint");
@@ -2933,12 +3402,289 @@ void MainWindow::addAudioFile(const QString& f, const MediaInfo& mi) {
     a.fileDur = mi.duration;
     a.dur = std::min(mi.duration, std::max(0.5, pr_.total() - t_));
     pushUndo();
+    a.track = freeTrack(true, a.t0, a.t0 + a.dur);
     pr_.audios.append(a);
     startWaves(f);
     selAudio_ = a.id;
     selPiece_ = -1;
     selItem_ = 0;
     modelEdited();
+}
+
+// ---------------------------------------------------------------- Spuren
+// Spur dieser Art, auf der [t0, t1) noch frei ist (die erste passende), sonst eine neue
+int MainWindow::freeTrack(bool audio, double t0, double t1) {
+    for (int id : pr_.trackIds(audio)) {
+        if (id == kMainTrack) continue;
+        bool busy = false;
+        if (audio) {
+            for (const AudioClip& a : pr_.audios)
+                busy |= pr_.audioTrackOf(a) == id && a.t0 < t1 - 0.01 && a.t0 + a.dur > t0 + 0.01;
+        } else {
+            for (const Item& it : pr_.items) busy |= it.track == id && it.t0 < t1 - 0.01 && it.t1 > t0 + 0.01;
+        }
+        if (!busy) return id;
+    }
+    return pr_.addTrack(audio);
+}
+
+// Video als Bild-im-Bild auf eine Video-Spur (rechts oben, 40 % breit)
+void MainWindow::addOverlayVideo(const QString& f, const MediaInfo& mi, double t, int track) {
+    if (pr_.pieces.isEmpty()) return;
+    const double total = pr_.total();
+    if (t > total - 0.2) t = 0;
+    Item it;
+    it.kind = Item::Video;
+    it.id = pr_.nextId++;
+    it.path = f;
+    it.fileDur = mi.duration;
+    it.hasAudio = mi.hasAudio;
+    it.t0 = t;
+    it.t1 = std::min(total, t + mi.duration);
+    it.ar = mi.w > 0 ? double(mi.h) / mi.w : 9.0 / 16.0;
+    it.w = 0.4;
+    it.h = std::min(0.95, it.w * pr_.vw * it.ar / pr_.vh);
+    it.w = it.h * pr_.vh / (pr_.vw * it.ar);
+    it.x = 1 - it.w - 0.03;
+    it.y = 0.04;
+    pushUndo();
+    const Track* tr = pr_.track(track);
+    it.track = tr && !tr->audio && track != kMainTrack ? track : freeTrack(false, it.t0, it.t1);
+    pr_.items.append(it);
+    startWaves(f);
+    selItem_ = it.id;
+    selPiece_ = -1;
+    selAudio_ = 0;
+    selSub_ = -1;
+    selTrack_ = 0;
+    btnEdit_->setChecked(true);
+    modelEdited();
+}
+
+void MainWindow::insertMediaOnTrack(const QString& path, double t, int track) {
+    addToBin(path);
+    if (pr_.pieces.isEmpty()) return insertMediaAt(path, t);
+    const Track* tr = pr_.track(track);
+    if (!tr || track == kMainTrack) return insertMediaAt(path, t);
+    if (mediaKindOf(path) == MediaKind::Image) {
+        if (tr->audio) return;
+        seek(t);
+        addImageFile(path);
+        if (Item* it = pr_.item(selItem_)) {
+            undo_.pop_back();  // ein Schritt für Einfügen + Spur
+            it->track = track;
+            modelEdited();
+        }
+        return;
+    }
+    const MediaInfo mi = probeMedia(path);
+    if (!mi.ok || mi.duration <= 0) {
+        QMessageBox::warning(this, "Vidline", T("media_unreadable"));
+        return;
+    }
+    if (tr->audio) {
+        seek(t);
+        addAudioFile(path, mi);
+        if (AudioClip* a = pr_.audio(selAudio_)) {
+            a->track = track;
+            modelEdited();
+        }
+        return;
+    }
+    if (mi.w <= 0) return;  // Ton auf eine Video-Spur: nichts zu zeigen
+    addOverlayVideo(path, mi, t, track);
+}
+
+// Clip auf eine andere Spur: Abschnitt -> Overlay, Overlay-Video -> Hauptvideo, Ton -> andere Ton-Spur
+bool MainWindow::moveToTrack(char kind, int id, int track) {
+    if (kind == 'a') {
+        AudioClip* a = pr_.audio(id);
+        if (!a) return false;
+        pushUndo();
+        const Track* t = pr_.track(track);
+        a->track = track < 0 || !t || !t->audio ? pr_.addTrack(true) : track;
+        selectAudio(id);
+        modelEdited();
+        return true;
+    }
+    if (kind == 'i') {
+        Item* it = pr_.item(id);
+        if (!it || !it->media()) return false;
+        if (track == kMainTrack) {
+            if (it->kind != Item::Video) return false;
+            // ins Hauptvideo an der Stelle des Clips einfügen
+            const Item c = *it;
+            pushUndo();
+            int si = -1;
+            for (int k = 0; k < pr_.sources.size(); ++k)
+                if (pr_.sources[k].path == c.path) si = k;
+            if (si < 0) {
+                Source s;
+                s.path = c.path;
+                s.duration = c.fileDur;
+                s.hasAudio = c.hasAudio;
+                pr_.sources.push_back(s);
+                si = pr_.sources.size() - 1;
+                startThumbs(si);
+            }
+            pr_.items.erase(std::remove_if(pr_.items.begin(), pr_.items.end(), [id](const Item& x) { return x.id == id; }), pr_.items.end());
+            double src = 0;
+            const int i = pr_.locate(c.t0, &src);
+            const Piece p = pr_.pieces[i];
+            int at;
+            if (src - p.start < kMinPiece) at = i;
+            else if (p.end - src < kMinPiece) at = i + 1;
+            else {
+                pr_.pieces[i].end = src;
+                Piece rest = p;
+                rest.start = src;
+                pr_.pieces.insert(i + 1, rest);
+                at = i + 1;
+            }
+            Piece np{si, c.srcStart, c.srcStart + (c.t1 - c.t0), 1.0, c.volume};
+            pr_.pieces.insert(at, np);
+            ensureProbed();
+            selItem_ = 0;
+            selPiece_ = at;
+            modelEdited();
+            return true;
+        }
+        pushUndo();
+        const Track* t = pr_.track(track);
+        it->track = track < 0 || !t || t->audio ? pr_.addTrack(false) : track;
+        if (it->kind == Item::Image && it->h <= 0) it->h = it->w * pr_.vw * it->ar / pr_.vh;
+        selectItem(id);
+        modelEdited();
+        return true;
+    }
+    if (kind == 'p') {
+        // Abschnitt wird Overlay auf einer Video-Spur, an derselben Stelle; das Hauptvideo rückt zusammen
+        if (id < 0 || id >= pr_.pieces.size() || pr_.pieces.size() < 2) return false;
+        const Piece p = pr_.pieces[id];
+        const Source src = pr_.sources.value(p.src);
+        if (std::abs(p.speed - 1.0) > 1e-6 || !src.video) return false;
+        const double t0 = pr_.outStart(id);
+        pushUndo();
+        pr_.pieces.removeAt(id);
+        const double total = pr_.total();
+        Item it;
+        it.kind = Item::Video;
+        it.id = pr_.nextId++;
+        it.path = src.path;
+        it.fileDur = src.duration;
+        it.hasAudio = src.hasAudio;
+        it.volume = p.volume;
+        it.srcStart = p.start;
+        it.t0 = std::min(t0, std::max(0.0, total - 0.1));
+        it.t1 = std::min(total, it.t0 + (p.end - p.start));
+        const MediaInfo mi = probeMedia(src.path);
+        it.ar = mi.w > 0 ? double(mi.h) / mi.w : double(pr_.vh) / pr_.vw;
+        // Bild füllt wie im Hauptvideo die Fläche (eingepasst)
+        it.w = 1.0;
+        it.h = it.w * pr_.vw * it.ar / pr_.vh;
+        if (it.h > 1.0) { it.h = 1.0; it.w = it.h * pr_.vh / (pr_.vw * it.ar); }
+        it.x = (1 - it.w) / 2;
+        it.y = (1 - it.h) / 2;
+        const Track* t = pr_.track(track);
+        it.track = track < 0 || !t || t->audio || track == kMainTrack ? pr_.addTrack(false) : track;
+        pr_.items.append(it);
+        startWaves(it.path);
+        selPiece_ = -1;
+        selItem_ = it.id;
+        modelEdited();
+        return true;
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------- Untertitel
+void MainWindow::updateSubtitlePreview() {
+    if (!subItem_) return;
+    const int i = cueAt(pr_.subs, t_);
+    const QString key = i < 0 ? QString() : QString("%1|%2x%3").arg(pr_.subs[i].text).arg(pr_.vw).arg(pr_.vh);
+    if (key == subKey_ && !key.isNull()) return;
+    if (key.isEmpty() && subKey_ == "-") return;
+    subKey_ = key.isEmpty() ? QString("-") : key;
+    if (i < 0) {
+        subItem_->setPixmap(QPixmap());
+        return;
+    }
+    // in Vorschaugröße rendern (höchstens 1280 breit), auf die Bildfläche skaliert
+    const double k = std::min(1.0, 1280.0 / std::max(1, pr_.vw));
+    const QSize sz(std::max(2, int(pr_.vw * k)), std::max(2, int(pr_.vh * k)));
+    subItem_->setPixmap(QPixmap::fromImage(renderSubtitleFrame(pr_.subs[i].text, pr_.subStyle, sz)));
+    subItem_->setScale(1.0 / k);
+    subItem_->setPos(0, 0);
+}
+
+void MainWindow::addSubtitleAtPlayhead() {
+    if (pr_.pieces.isEmpty()) return;
+    pushUndo();
+    SubCue c;
+    c.t0 = t_;
+    c.t1 = std::min(pr_.total(), t_ + 2.5);
+    if (c.t1 - c.t0 < 0.5) { c.t0 = std::max(0.0, c.t1 - 2.5); }
+    c.text = T("sub_new_text");
+    int at = 0;
+    while (at < pr_.subs.size() && pr_.subs[at].t0 <= c.t0) ++at;
+    pr_.subs.insert(at, c);
+    btnEdit_->setChecked(true);
+    modelEdited(true);
+    selectSub(at);
+    subEdit_->setFocus();
+    subEdit_->selectAll();
+}
+
+void MainWindow::importSubtitles() {
+    if (pr_.pieces.isEmpty()) return;
+    const QString f = QFileDialog::getOpenFileName(this, T("sub_import"), QString(), T("sub_files") + " (*.srt *.vtt)");
+    if (f.isEmpty()) return;
+    QFile file(f);
+    if (!file.open(QIODevice::ReadOnly)) return;
+    QList<SubCue> cues = parseSubtitles(QString::fromUtf8(file.readAll()));
+    normalizeCues(cues, pr_.total());
+    if (cues.isEmpty()) {
+        QMessageBox::warning(this, "Vidline", T("sub_none"));
+        return;
+    }
+    pushUndo();
+    pr_.subs = cues;
+    btnEdit_->setChecked(true);
+    modelEdited(true);
+    selectSub(0);
+}
+
+void MainWindow::saveSubtitles(bool vtt) {
+    if (pr_.subs.isEmpty()) return;
+    const QString base = pr_.sources.isEmpty() ? QString("subtitles") : QFileInfo(pr_.sources[0].path).completeBaseName();
+    const QString dir = pr_.sources.isEmpty() ? QString() : QFileInfo(pr_.sources[0].path).absolutePath();
+    const QString f = QFileDialog::getSaveFileName(this, vtt ? T("sub_save_vtt") : T("sub_save_srt"),
+                                                   QDir(dir).filePath(base + (vtt ? ".vtt" : ".srt")),
+                                                   vtt ? "WebVTT (*.vtt)" : "SubRip (*.srt)");
+    if (f.isEmpty()) return;
+    QList<SubCue> cues = pr_.subs;
+    normalizeCues(cues, pr_.total());
+    QFile file(f);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, "Vidline", file.errorString());
+        return;
+    }
+    file.write((vtt ? toVtt(cues) : toSrt(cues)).toUtf8());
+}
+
+void MainWindow::autoSubtitles() {
+    if (pr_.pieces.isEmpty()) return;
+    player_->pause();
+    ensureProbed();
+    SubtitleDialog dlg(pr_, this);
+    if (dlg.exec() != QDialog::Accepted || dlg.cues().isEmpty()) return;
+    pushUndo();
+    if (dlg.replaceExisting()) pr_.subs = dlg.cues();
+    else pr_.subs += dlg.cues();
+    normalizeCues(pr_.subs, pr_.total());
+    btnEdit_->setChecked(true);
+    modelEdited(true);
+    selectSub(0);
 }
 
 // ---------------------------------------------------------------- Export
@@ -2949,6 +3695,7 @@ void MainWindow::exportVideo() {
     ExportDialog opt(this, pr_.vw, pr_.vh, pr_.sources[0].fps, pr_.sources[0].path);
     opt.setEstimateInputs(pr_.total(), pr_.sources[0].duration, pr_.natW, pr_.natH,
                           pr_.sources[0].hasAudio || !pr_.audios.isEmpty());
+    opt.setHasSubtitles(!pr_.subs.isEmpty());
     if (opt.exec() != QDialog::Accepted) return;
     ExportOptions eo = opt.options();
     const bool replace = opt.replaceOriginal();
@@ -2958,17 +3705,15 @@ void MainWindow::exportVideo() {
     const QString out = replace ? QFileInfo(finalPath).dir().filePath(".vidline-export-" +
                                   QString::number(QDateTime::currentMSecsSinceEpoch()) + "." + eo.format)
                                 : finalPath;
-
-    // Texte in Export-Auflösung als Bilder rendern (sieht genauso aus wie in der Vorschau)
-    Project ep = pr_;
-    auto textDir = std::make_shared<QTemporaryDir>();
-    for (Item& it : ep.items) {
-        if (it.kind != Item::Text && !it.graphic()) continue;
-        const QString png = textDir->filePath(QString("text%1.png").arg(it.id));
-        renderItemImage(it, QSize(std::max(2, int(it.w * eo.width)), std::max(2, int(it.h * eo.height))), eo.height).save(png);
-        it.path = png;
+    // Texte/Zeichnungen und Untertitel als Bilder, bei Ziel-Dateigröße zwei Durchgänge
+    auto job = std::make_shared<ExportJob>(prepareExport(pr_, eo, out, opt.twoPass(), opt.subMode()));
+    if (opt.subSidecar() && !pr_.subs.isEmpty()) {
+        QList<SubCue> cues = pr_.subs;
+        normalizeCues(cues, pr_.total());
+        QFile f(QFileInfo(finalPath).dir().filePath(QFileInfo(finalPath).completeBaseName() + ".srt"));
+        if (f.open(QIODevice::WriteOnly | QIODevice::Text)) f.write(toSrt(cues).toUtf8());
     }
-    QStringList args = buildExport(ep, eo, out);
+    const double maxBytes = opt.maxBytes();
     const double total = pr_.total();
     auto* dlg = new QProgressDialog(T("exporting"), T("cancel"), 0, 1000, this);
     dlg->setWindowModality(Qt::WindowModal);
@@ -2976,31 +3721,20 @@ void MainWindow::exportVideo() {
     dlg->setAutoClose(false);
     dlg->setAutoReset(false);
     dlg->setValue(0);
-
-    exportProc_ = new QProcess(this);
-    auto* proc = exportProc_;
+    auto passNo = std::make_shared<int>(0);
     auto errText = std::make_shared<QString>();
-    connect(proc, &QProcess::readyReadStandardOutput, this, [proc, dlg, total] {
-        while (proc->canReadLine()) {
-            QString line = QString::fromUtf8(proc->readLine()).trimmed();
-            if (line.startsWith("out_time_us=")) {
-                double s = line.mid(12).toLongLong() / 1e6;
-                dlg->setValue(int(std::min(1.0, s / std::max(total, 0.01)) * 1000));
-            }
-        }
+    auto cancelled = std::make_shared<bool>(false);
+    connect(dlg, &QProgressDialog::canceled, this, [this, cancelled] {
+        *cancelled = true;
+        if (exportProc_) exportProc_->kill();
     });
-    connect(proc, &QProcess::readyReadStandardError, this,
-            [proc, errText] { *errText += QString::fromUtf8(proc->readAllStandardError()); });
-    connect(dlg, &QProgressDialog::canceled, proc, [proc] { proc->kill(); });
-    connect(proc, &QProcess::finished, this, [this, proc, dlg, out, errText, replace, original, finalPath, textDir](int code, QProcess::ExitStatus st) {
-        bool cancelled = st == QProcess::CrashExit;
+    auto finish = [this, dlg, out, replace, original, finalPath, maxBytes](bool ok, const QString& err) {
         dlg->close();
         dlg->deleteLater();
         exportProc_ = nullptr;
-        proc->deleteLater();
-        if (cancelled || code != 0) {
+        if (!ok) {
             if (replace) QFile::remove(out);
-            if (!cancelled) QMessageBox::critical(this, T("export_fail"), errText->right(1500));
+            if (!err.isEmpty()) QMessageBox::critical(this, T("export_fail"), err.right(1500));
             return;
         }
         QString saved = out;
@@ -3009,23 +3743,56 @@ void MainWindow::exportVideo() {
             player_->stop();
             player_->setSource(QUrl());
             for (auto& [id, ap] : audioPlayers_) ap.p->setSource(QUrl());
+            for (auto& [id, op] : ovPlayers_) op.p->setSource(QUrl());
             QApplication::processEvents();
             thumbSets_.erase(original);
             thumbSets_.erase(finalPath);
-            bool ok = true;
-            if (QFileInfo::exists(finalPath) && !QFile::remove(finalPath)) ok = false;
-            if (ok && original != finalPath) QFile::remove(original);
-            if (ok) ok = QFile::rename(out, finalPath);
-            if (!ok) {
+            bool fine = true;
+            if (QFileInfo::exists(finalPath) && !QFile::remove(finalPath)) fine = false;
+            if (fine && original != finalPath) QFile::remove(original);
+            if (fine) fine = QFile::rename(out, finalPath);
+            if (!fine) {
                 QMessageBox::critical(this, T("export_fail"), QDir::toNativeSeparators(out));
                 return;
             }
             saved = finalPath;
             openFile(finalPath);
         }
-        QMessageBox::information(this, T("done"), T("saved") + "\n" + QDir::toNativeSeparators(saved));
-    });
-    proc->start(ffmpegPath(), args);
+        QString msg = T("saved") + "\n" + QDir::toNativeSeparators(saved);
+        const qint64 size = QFileInfo(saved).size();
+        if (maxBytes > 0 && size > maxBytes) msg += "\n\n" + T("pr_over_limit");
+        QMessageBox::information(this, T("done"), msg);
+    };
+    // Durchgänge nacheinander; bei 2-Pass zählt jeder zur Hälfte
+    auto runPass = std::make_shared<std::function<void()>>();
+    *runPass = [this, job, dlg, total, passNo, errText, cancelled, finish, runPass] {
+        const int k = *passNo, cnt = int(job->passes.size());
+        exportProc_ = new QProcess(this);
+        auto* proc = exportProc_;
+        proc->setWorkingDirectory(job->tmp->path());
+        connect(proc, &QProcess::readyReadStandardOutput, this, [proc, dlg, total, k, cnt] {
+            while (proc->canReadLine()) {
+                QString line = QString::fromUtf8(proc->readLine()).trimmed();
+                if (line.startsWith("out_time_us=")) {
+                    const double s = line.mid(12).toLongLong() / 1e6;
+                    const double f = (k + std::min(1.0, s / std::max(total, 0.01))) / cnt;
+                    dlg->setValue(int(f * 1000));
+                }
+            }
+        });
+        connect(proc, &QProcess::readyReadStandardError, this,
+                [proc, errText] { *errText += QString::fromUtf8(proc->readAllStandardError()); if (errText->size() > 40000) *errText = errText->right(20000); });
+        connect(proc, &QProcess::finished, this, [proc, job, passNo, errText, cancelled, finish, runPass, cnt](int code, QProcess::ExitStatus st) {
+            proc->deleteLater();
+            if (*cancelled || st == QProcess::CrashExit) return finish(false, QString());
+            if (code != 0) return finish(false, *errText);
+            if (++*passNo < cnt) return (*runPass)();
+            *runPass = nullptr;  // Kreisverweis lösen
+            finish(true, QString());
+        });
+        proc->start(ffmpegPath(), job->passes[k]);
+    };
+    (*runPass)();
 }
 
 // Entwickler-Test: Fenster per grab() in Dateien rendern (greift nicht auf den Bildschirm zu)

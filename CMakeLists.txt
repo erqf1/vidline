@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Vidline VERSION 1.16.0 LANGUAGES CXX)
+project(Vidline VERSION 1.17.0 LANGUAGES CXX)
 if(WIN32)
     enable_language(RC)
 endif()
@@ -41,6 +41,10 @@ set(VIDLINE_SOURCES
     src/music.cpp
     src/videodl.h
     src/videodl.cpp
+    src/subtitles.h
+    src/subtitles.cpp
+    src/presets.h
+    src/presets.cpp
     src/mainwindow.h
     src/mainwindow.cpp
     src/updater.h
@@ -51,6 +55,7 @@ set(VIDLINE_SOURCES
     src/textrender.cpp
     assets/fonts.qrc
     assets/denoise.qrc
+    assets/tests.qrc
 )
 
 if(WIN32)

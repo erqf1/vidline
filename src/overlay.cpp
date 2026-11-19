@@ -67,8 +67,12 @@ void Overlay::paint(QPainter* p, const QStyleOptionGraphicsItem*, QWidget*) {
                                 .arg(it->fill).arg(pts).arg(px.width()).arg(px.height());
         if (key != textKey_) { textImg_ = renderGraphicImage(*it, px, host_->pr().vh); textKey_ = key; }
         p->drawImage(r, textImg_);
+    } else if (it && it->kind == Item::Video) {
+        // das Bild kommt vom eigenen Player darunter, hier nur Rahmen und Griffe
     } else if (!pm_.isNull()) {
+        p->setOpacity(it ? std::clamp(it->opacity, 0.0, 1.0) : 1.0);
         p->drawPixmap(r, pm_, QRectF(pm_.rect()));
+        p->setOpacity(1.0);
     } else {
         paintBlur(p);
     }
@@ -113,12 +117,13 @@ void Overlay::mouseMoveEvent(QGraphicsSceneMouseEvent* e) {
                std::clamp(startPos_.y() + d.y(), 0.0, std::max(0.0, pr.vh - h_)));
     } else {
         double nw = std::clamp(startW_ + d.x(), 16.0, pr.vw - startPos_.x());
-        double nh = it->kind == Item::Image ? nw * it->ar
+        double nh = it->media() ? nw * it->ar
                                             : std::clamp(startH_ + d.y(), 16.0, pr.vh - startPos_.y());
         w_ = nw;
         h_ = nh;
     }
     syncModel();
+    host_->overlayMoved();
 }
 
 void Overlay::mouseReleaseEvent(QGraphicsSceneMouseEvent*) {

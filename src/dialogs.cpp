@@ -4,6 +4,7 @@
 #include <QProcess>
 #include <QColorDialog>
 #include <cmath>
+#include <numeric>
 #include <QLocale>
 
 #include <QDir>
@@ -21,6 +22,8 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QScrollArea>
+#include <QInputDialog>
+#include <QSettings>
 #include "i18n.h"
 #include "shortcuts.h"
 #include "icons.h"
@@ -454,7 +457,27 @@ ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, c
     v->setContentsMargins(20, 20, 20, 20);
     v->setSpacing(12);
     auto* form = new QFormLayout;
+    form_ = form;
     form->setSpacing(12);
+
+    // Vorlage: TikTok, YouTube, Discord … oder eigene Einstellungen
+    preset_ = new QComboBox;
+    savePreset_ = new QPushButton(T("pr_save"));
+    savePreset_->setToolTip(T("pr_save_tip"));
+    delPreset_ = new QPushButton;
+    delPreset_->setIcon(makeIcon(Ic::Trash, currentTheme().muted));
+    delPreset_->setToolTip(T("pr_delete"));
+    delPreset_->setFixedWidth(36);
+    auto* presetRow = new QHBoxLayout;
+    presetRow->addWidget(preset_, 1);
+    presetRow->addWidget(savePreset_);
+    presetRow->addWidget(delPreset_);
+    form->addRow(T("pr_template"), presetRow);
+    fit_ = new QComboBox;
+    fit_->addItem(T("fit_pad"), 0);
+    fit_->addItem(T("fit_crop"), 1);
+    fit_->addItem(T("fit_blur"), 2);
+    form->addRow(T("fit"), fit_);
 
     // Format: Video, GIF oder nur Ton
     format_ = new QComboBox;
@@ -489,12 +512,49 @@ ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, c
     quality_->addItem(T("q_small"), 2);
     quality_->setCurrentIndex(1);
     form->addRow(T("quality"), quality_);
+    subs_ = new QComboBox;
+    subs_->addItem(T("sub_exp_none"), 0);
+    subs_->addItem(T("sub_exp_burn"), 1);
+    subs_->addItem(T("sub_exp_track"), 2);
+    subs_->setCurrentIndex(1);
+    sidecar_ = new QCheckBox(T("sub_exp_srt"));
+    auto* subRow = new QVBoxLayout;
+    subRow->setSpacing(6);
+    subRow->addWidget(subs_);
+    subRow->addWidget(sidecar_);
+    form->addRow(T("subtitles"), subRow);
+    form->setRowVisible(subRow, false);
     v->addLayout(form);
+    // Vorschau: Zielgröße als Rahmen, daneben Größe in Pixeln und ungefähre Dateigröße
+    auto* pv = new QHBoxLayout;
+    pv->setSpacing(14);
+    preview_ = new FramePreview;
+    pv->addWidget(preview_);
+    auto* pvText = new QVBoxLayout;
+    pvText->setSpacing(4);
+    target_ = new QLabel;
+    target_->setObjectName("hint");
+    target_->setWordWrap(true);
     est_ = new QLabel;
     est_->setObjectName("title");
-    v->addWidget(est_);
-    for (QComboBox* c : {format_, res_, fps_, quality_})
+    est_->setWordWrap(true);
+    pvText->addStretch();
+    pvText->addWidget(est_);
+    pvText->addWidget(target_);
+    pvText->addStretch();
+    pv->addLayout(pvText, 1);
+    v->addLayout(pv);
+    for (QComboBox* c : {format_, res_, fps_, quality_, fit_})
         connect(c, &QComboBox::currentIndexChanged, this, &ExportDialog::updateEstimate);
+    connect(preset_, &QComboBox::currentIndexChanged, this, &ExportDialog::applyPreset);
+    connect(savePreset_, &QPushButton::clicked, this, &ExportDialog::savePreset);
+    connect(delPreset_, &QPushButton::clicked, this, [this] {
+        const ExportPreset* p = currentPreset();
+        if (!p || p->builtin) return;
+        if (QMessageBox::question(this, T("pr_template"), T("pr_delete_q").arg(p->name)) != QMessageBox::Yes) return;
+        removeCustomPreset(p->name);
+        fillPresets(QString());
+    });
 
     auto* hint = new QLabel(T("export_hint"));
     hint->setObjectName("hint");
@@ -549,7 +609,7 @@ ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, c
     connect(format_, &QComboBox::currentIndexChanged, this, [this, form] {
         const QString f = format_->currentData().toString();
         const bool audio = isAudioFormat(f);
-        form->setRowVisible(res_, !audio);
+        form->setRowVisible(res_, !audio && !currentPreset());
         form->setRowVisible(fps_, !audio && f != "gif");
         form->setRowVisible(quality_, f != "gif" && f != "wav");
         ext_->setText("." + f);
@@ -570,7 +630,151 @@ ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, c
     row->addWidget(cancel);
     row->addWidget(ok);
     v->addLayout(row);
+    fillPresets(QSettings().value("export/preset").toString());
 }
+
+void FramePreview::paintEvent(QPaintEvent*) {
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
+    const Theme& th = currentTheme();
+    const QRectF area = QRectF(rect()).adjusted(6, 6, -6, -6);
+    auto fitIn = [](QSizeF s, QRectF box) {
+        const double k = std::min(box.width() / s.width(), box.height() / s.height());
+        const QSizeF r(s.width() * k, s.height() * k);
+        return QRectF(box.center() - QPointF(r.width() / 2, r.height() / 2), r);
+    };
+    const QRectF frame = fitIn(QSizeF(std::max(1, target_.width()), std::max(1, target_.height())), area);
+    const QSizeF cs(std::max(1, canvas_.width()), std::max(1, canvas_.height()));
+    const double kPad = std::min(frame.width() / cs.width(), frame.height() / cs.height());
+    const double kCrop = std::max(frame.width() / cs.width(), frame.height() / cs.height());
+    const double k = fit_ == 1 ? kCrop : kPad;
+    const QRectF pic(frame.center() - QPointF(cs.width() * k / 2, cs.height() * k / 2), cs * k);
+    p.setPen(Qt::NoPen);
+    if (fit_ == 2) {  // unscharfer Rand: verwaschene Fläche statt Schwarz
+        QLinearGradient g(frame.topLeft(), frame.bottomRight());
+        g.setColorAt(0, th.accent.darker(260));
+        g.setColorAt(1, th.accent.darker(190));
+        p.setBrush(g);
+    } else {
+        p.setBrush(QColor(0, 0, 0));
+    }
+    p.drawRoundedRect(frame, 4, 4);
+    p.save();
+    p.setClipRect(frame);
+    QLinearGradient g(pic.topLeft(), pic.bottomLeft());
+    g.setColorAt(0, th.accent.lighter(115));
+    g.setColorAt(1, th.accent.darker(140));
+    p.setBrush(g);
+    p.drawRect(pic);
+    p.restore();
+    if (fit_ == 1 && (pic.width() > frame.width() + 1 || pic.height() > frame.height() + 1)) {
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(th.muted, 1, Qt::DashLine));
+        p.drawRect(pic.intersected(QRectF(rect()).adjusted(1, 1, -1, -1)));
+    }
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(th.text, 1.5));
+    p.drawRoundedRect(frame, 4, 4);
+}
+
+const ExportPreset* ExportDialog::currentPreset() const {
+    return findPreset(presets_, preset_->currentData().toString());
+}
+
+QString ExportDialog::presetId() const { return preset_->currentData().toString(); }
+
+void ExportDialog::fillPresets(const QString& select) {
+    presets_ = allPresets();
+    QSignalBlocker b(preset_);
+    preset_->clear();
+    preset_->addItem(T("pr_manual"), QString());
+    for (const ExportPreset& p : presets_)
+        preset_->addItem(p.builtin ? p.title() : p.title() + "  ·  " + T("pr_own"), p.id);
+    preset_->setCurrentIndex(std::max(0, preset_->findData(select)));
+    applyPreset();
+}
+
+void ExportDialog::selectPreset(const QString& id) { preset_->setCurrentIndex(std::max(0, preset_->findData(id))); }
+
+void ExportDialog::setFit(int fit) { fit_->setCurrentIndex(std::max(0, fit_->findData(fit))); }
+
+// Vorlage gewählt: Format und Rand übernehmen; Auflösung, Bildrate und Qualität legt die Vorlage fest
+void ExportDialog::applyPreset() {
+    const ExportPreset* p = currentPreset();
+    QSettings().setValue("export/preset", presetId());
+    delPreset_->setVisible(p && !p->builtin);
+    for (QComboBox* c : {res_, fps_, quality_}) c->setEnabled(!p);
+    format_->setEnabled(!p);
+    if (p) {
+        QSignalBlocker b1(fit_), b2(format_);
+        fit_->setCurrentIndex(std::max(0, fit_->findData(p->fit)));
+        format_->setCurrentIndex(std::max(0, format_->findData(p->format)));
+        if (p->maxMB <= 0 && p->format != "gif") quality_->setCurrentIndex(std::max(0, quality_->findData(p->quality)));
+        ext_->setText("." + p->format);
+        const bool video = p->format == "mp4" || p->format == "mov" || p->format == "mkv";
+        if (!video) replace_->setChecked(false);
+        replace_->setEnabled(video);
+    }
+    const QString f = format_->currentData().toString();
+    form_->setRowVisible(res_, !p && !isAudioFormat(f));
+    updateEstimate();
+    adjustSize();
+}
+
+void ExportDialog::savePreset() {
+    bool ok = false;
+    const ExportPreset* cur = currentPreset();
+    const QString name = QInputDialog::getText(this, T("pr_save"), T("pr_name"), QLineEdit::Normal,
+                                               cur && !cur->builtin ? cur->name : QString(), &ok).trimmed();
+    if (!ok || name.isEmpty()) return;
+    ExportPreset p;
+    if (cur) p = *cur;
+    else {
+        const ExportOptions o = options();
+        p.w = o.finalW();
+        p.h = o.finalH();
+        p.maxFps = o.fps;
+        p.format = o.format;
+        p.quality = o.quality;
+    }
+    p.builtin = false;
+    p.key = nullptr;
+    p.name = name;
+    p.id = "custom:" + name;
+    p.fit = fit_->currentData().toInt();
+    saveCustomPreset(p);
+    fillPresets(p.id);
+}
+
+void ExportDialog::setHasSubtitles(bool on) {
+    for (int r = 0; r < form_->rowCount(); ++r) {
+        QLayoutItem* it = form_->itemAt(r, QFormLayout::FieldRole);
+        if (it && it->layout() && it->layout()->indexOf(subs_) >= 0) form_->setRowVisible(r, on);
+    }
+    adjustSize();
+}
+
+int ExportDialog::subMode() const {
+    if (!subs_->isVisibleTo(this)) return 0;
+    const int m = subs_->currentData().toInt();
+    const QString f = options().format;
+    if (m == 2 && !(f == "mp4" || f == "mov" || f == "mkv")) return 0;
+    return m;
+}
+
+bool ExportDialog::subSidecar() const { return subs_->isVisibleTo(this) && sidecar_->isChecked(); }
+
+bool ExportDialog::twoPass() const {
+    const ExportPreset* p = currentPreset();
+    return p && p->maxMB > 0 && options().videoKbps > 0;
+}
+
+double ExportDialog::maxBytes() const {
+    const ExportPreset* p = currentPreset();
+    return p && !isAudioFormat(p->format) && p->format != "gif" ? p->maxMB * 1e6 : 0;
+}
+
+QString ExportDialog::estimateText() const { return est_->text() + "\n" + target_->text(); }
 
 void ExportDialog::setEstimateInputs(double outDuration, double srcDuration, int natW, int natH, bool hasAudio) {
     outDur_ = outDuration;
@@ -583,11 +787,14 @@ void ExportDialog::setEstimateInputs(double outDuration, double srcDuration, int
     updateEstimate();
 }
 
-void ExportDialog::showSize(double bits) {
-    const double mb = bits / 8 / 1048576;
-    const QString size = mb >= 1024 ? QString("%1 GB").arg(QLocale().toString(mb / 1024, 'f', 1))
-                                    : QString("%1 MB").arg(mb < 10 ? QLocale().toString(mb, 'f', 1) : QString::number(qRound(mb)));
-    est_->setText(T("est_size").arg(size));
+static QString fmtMB(double bytes) {
+    const double mb = bytes / 1e6;
+    return mb >= 1000 ? QString("%1 GB").arg(QLocale().toString(mb / 1000, 'f', 1))
+                      : QString("%1 MB").arg(mb < 10 ? QLocale().toString(mb, 'f', 1) : QString::number(qRound(mb)));
+}
+
+void ExportDialog::showSize(double bits, const QString& extra) {
+    est_->setText(T("est_size").arg(fmtMB(bits / 8)) + extra);
 }
 
 // Ungefähre Dateigröße. Exportiert wird mit konstanter Qualität (CRF/CQP), die Größe hängt also vom Inhalt ab.
@@ -604,17 +811,42 @@ void ExportDialog::updateEstimate() {
     const ExportOptions o = options();
     const int q = std::clamp(o.quality, 0, 2);
     double bits = 0;
+    const int fw = o.finalW(), fh = o.finalH();
+    if (preview_) {
+        preview_->set(QSize(srcW_, srcH_), QSize(fw, fh), o.fit);
+        int g = std::gcd(fw, fh);
+        QString t = isAudioFormat(o.format) ? T("audio_only") : QString("%1 × %2 · %3:%4").arg(fw).arg(fh).arg(fw / g).arg(fh / g);
+        if (o.format == "gif" && !isAudioFormat(o.format)) {
+            const int gw = std::max(2, int(std::lround(std::min(fw, o.gifWidth) / 2.0)) * 2);
+            t = QString("%1 × %2 · GIF").arg(gw).arg(std::max(2, int(std::lround(double(fh) * gw / fw / 2.0)) * 2));
+        }
+        if (!isAudioFormat(o.format) && o.format != "gif") t += QString(" · %1 fps").arg(o.fps, 0, 'g', 4);
+        if (!isAudioFormat(o.format) && std::min(fw, fh) > std::min(srcW_, srcH_) + 2) t += "\n" + T("pr_upscaled");
+        if (o.outW > 0) t += "\n" + fit_->currentText();
+        target_->setText(t);
+        form_->setRowVisible(fit_, o.outW > 0 && !isAudioFormat(o.format));
+    }
+    if (o.videoKbps > 0) {
+        // Ziel-Dateigröße: feste Bitrate in zwei Durchgängen, die Größe ist fast genau vorher bekannt
+        const double bytes = outDur_ * (o.videoKbps + (hasAudio_ ? o.audioKbps : 0)) * 1000.0 / 8.0 * 1.01;
+        const ExportPreset* p = currentPreset();
+        QString extra = "\n" + T("pr_size_target").arg(fmtMB(p ? p->maxMB * 1e6 : bytes)).arg(o.videoKbps);
+        if (p && outDur_ > 0 && sizeTargetVideoKbps(p->maxMB * 1e6, outDur_, hasAudio_ ? o.audioKbps : 0) < 100)
+            extra += "\n" + T("pr_too_long");
+        showSize(bytes * 8, extra);
+        return;
+    }
     if (o.format == "wav") {
         bits = outDur_ * 48000 * 2 * 16;
     } else if (isAudioFormat(o.format)) {
         static const double kbps[3] = {320, 192, 128};
         bits = outDur_ * kbps[q] * 1000;
     } else if (o.format == "gif") {
-        const double gw = std::min(o.width, 640), gh = double(o.height) * gw / std::max(1, o.width);
-        bits = outDur_ * gw * gh * std::min(o.fps, 15.0) * 0.5;  // sehr grob: GIF schwankt stark mit dem Inhalt
+        const double gw = std::min(fw, o.gifWidth), gh = double(fh) * gw / std::max(1, fw);
+        bits = outDur_ * gw * gh * std::min(o.fps, o.gifFps) * 0.5;  // sehr grob: GIF schwankt stark mit dem Inhalt
     } else {
         static const double factor[3] = {1.0, 0.6, 0.38}, bppMin[3] = {0.03, 0.018, 0.011}, bppMax[3] = {0.25, 0.12, 0.07};
-        const double pxRate = double(o.width) * o.height * o.fps;
+        const double pxRate = double(fw) * fh * o.fps;
         double vbps = srcVideoBps_ > 0 && srcPxRate_ > 0 ? srcVideoBps_ * std::pow(pxRate / srcPxRate_, 0.75) * factor[q]
                                                           : pxRate * 0.07 * factor[q];
         vbps = std::clamp(vbps, pxRate * bppMin[q], pxRate * bppMax[q]);
@@ -627,7 +859,7 @@ void ExportDialog::updateEstimate() {
             QStringList a = {"-hide_banner", "-v", "error", "-y", "-ss", QString::number(from, 'f', 2), "-t",
                              QString::number(len, 'f', 2), "-i", source_, "-an", "-vf",
                              QString("scale=%1:%2:force_original_aspect_ratio=decrease,pad=%1:%2:(ow-iw)/2:(oh-ih)/2,format=yuv420p")
-                                 .arg(o.width).arg(o.height),
+                                 .arg(fw).arg(fh),
                              "-r", QString::number(o.fps, 'f', 3)};
             a << encArgs(o.encoder, q) << tmp;
             probe_ = new QProcess(this);
@@ -647,6 +879,13 @@ void ExportDialog::updateEstimate() {
 }
 
 ExportOptions ExportDialog::options() const {
+    if (const ExportPreset* p = currentPreset()) {
+        ExportPreset pp = *p;
+        pp.fit = fit_->currentData().toInt();
+        ExportOptions o = planPreset(pp, srcW_, srcH_, srcFps_, outDur_, hasAudio_).o;
+        o.encoder = (o.format == "gif" || isAudioFormat(o.format) || o.videoKbps > 0) ? QString("libx264") : detectEncoder();
+        return o;
+    }
     ExportOptions o;
     const double k = res_->currentData().toDouble() / std::max(1, std::min(srcW_, srcH_));
     o.width = std::max(2, int(std::lround(srcW_ * k / 2.0)) * 2);

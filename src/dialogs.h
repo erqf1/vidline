@@ -7,6 +7,7 @@
 #include <QListWidget>
 #include <QPushButton>
 #include "model.h"
+#include "presets.h"
 #include "tags.h"
 
 // Erststart: Sprache wählen
@@ -96,7 +97,21 @@ public:
     explicit ShortcutDialog(QWidget* parent = nullptr);
 };
 
-// Export-Optionen: Auflösung / Bildrate / Qualität – nur Werte bis zum Original werden angeboten
+// Vorschau der Zielgröße: Rahmen im Seitenverhältnis der Ausgabe, darin das Projekt (Rand, Zuschnitt, unscharf)
+class FramePreview : public QWidget {
+public:
+    FramePreview() { setFixedSize(132, 132); }
+    void set(QSize canvas, QSize target, int fit) { canvas_ = canvas; target_ = target; fit_ = fit; update(); }
+
+protected:
+    void paintEvent(QPaintEvent*) override;
+
+private:
+    QSize canvas_{16, 9}, target_{16, 9};
+    int fit_ = 0;
+};
+
+// Export-Optionen: Vorlage oder Auflösung / Bildrate / Qualität – nur Werte bis zum Original werden angeboten
 class ExportDialog : public QDialog {
     Q_OBJECT
 public:
@@ -107,18 +122,37 @@ public:
     void accept() override;
     // Für die ungefähre Dateigröße: Länge des Ergebnisses, Original (Länge, Größe in Pixeln), Ton ja/nein
     void setEstimateInputs(double outDuration, double srcDuration, int natW, int natH, bool hasAudio);
+    void setHasSubtitles(bool on);
+    bool twoPass() const;
+    double maxBytes() const;
+    int subMode() const;             // 0 keine, 1 einbrennen, 2 als Untertitelspur
+    bool subSidecar() const;         // zusätzlich .srt neben die Datei
+    QString presetId() const;
+    void selectPreset(const QString& id);  // auch für Tests
+    QString estimateText() const;
+    void setFit(int fit);
 
 private:
     void updateEstimate();
+    void fillPresets(const QString& select);
+    void applyPreset();
+    void savePreset();
+    const ExportPreset* currentPreset() const;
     int srcW_, srcH_;
     double srcFps_ = 30, outDur_ = 0, srcDur_ = 0, srcVideoBps_ = 0, srcPxRate_ = 0;
     class QProcess* probe_ = nullptr;  // Probe-Export (3 s) für eine echte Größenschätzung
-    void showSize(double bits);
+    void showSize(double bits, const QString& extra = QString());
     bool hasAudio_ = true;
     QLabel* est_ = nullptr;
+    QLabel* target_ = nullptr;
+    FramePreview* preview_ = nullptr;
     QString source_;
     QString ext() const;
-    QComboBox *format_, *res_, *fps_, *quality_;
+    QComboBox *preset_, *fit_, *format_, *res_, *fps_, *quality_, *subs_;
+    QPushButton *savePreset_, *delPreset_;
+    QCheckBox* sidecar_;
+    QList<ExportPreset> presets_;
+    class QFormLayout* form_ = nullptr;
     QLabel* ext_;
     QLineEdit *name_, *folder_;
     QPushButton* browse_;

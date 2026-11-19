@@ -19,6 +19,7 @@
 #include <QComboBox>
 #include <QCheckBox>
 #include <QGraphicsPathItem>
+#include <QGraphicsPixmapItem>
 #include <QSplitter>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -36,6 +37,7 @@
 #include "updater.h"
 #include "videoview.h"
 #include "tags.h"
+#include "model.h"
 
 // Zeitleiste unten: Klick springt direkt an die Stelle (statt in kleinen Schritten)
 class SeekSlider : public QSlider {
@@ -105,6 +107,20 @@ public:
     QRectF videoRect() const override { return QRectF(vitem_->pos(), vitem_->size()); }
     bool showGuides() const override { return !fullscreen_ && btnEdit_->isChecked(); }
     void insertMediaAt(const QString& path, double t) override;
+    int timelineViewportHeight() const override { return tlScroll_->viewport()->height(); }
+    int selSub() const override { return selSub_; }
+    void selectSub(int i) override;
+    int selTrack() const override { return selTrack_; }
+    void selectTrack(int id) override;
+    bool moveToTrack(char kind, int id, int track) override;
+    void insertMediaOnTrack(const QString& path, double t, int track) override;
+    void tracksChanged() override;
+    void overlayMoved() override { placeOverlayPlayers(); }
+
+    // Entwickler-Tests für 1.17 (unsichtbar, Ergebnis in <ordner>/…-ergebnis.txt, Exit-Code 1 bei Fehlern)
+    void subtitleTest(const QString& dir, bool online);
+    void tracksTest(const QString& dir);
+    void presetTest(const QString& dir);
 
 protected:
     void resizeEvent(QResizeEvent*) override;
@@ -220,6 +236,46 @@ private:
     void showScrubPreview(int sliderValue, QSlider* from);
     void wireSeekSlider(QSlider* s);  // Ziehen = Spulen mit Live-Bild, Klick = Sprung
     void exportVideo();
+    // Spuren: Overlay-Videos (Bild-im-Bild) in der Vorschau, je eigener Player
+    struct OverlayPlayer {
+        QMediaPlayer* p;
+        QAudioOutput* out;
+        QGraphicsVideoItem* v;
+    };
+    std::map<int, OverlayPlayer> ovPlayers_;
+    void syncOverlayPlayers();
+    void placeOverlayPlayers();
+    void addOverlayVideo(const QString& f, const MediaInfo& mi, double t, int track);
+    int freeTrack(bool audio, double t0, double t1);  // Spur ohne Überschneidung (sonst neue)
+    QWidget* buildTrackPage();
+    QWidget* buildSubtitlePage();
+    // Untertitel
+    void updateSubtitlePreview();
+    void addSubtitleAtPlayhead();
+    void importSubtitles();
+    void saveSubtitles(bool vtt);
+    void autoSubtitles();
+    void editSubStyle(const std::function<void(SubStyle&)>& fn);
+    QLabel* tl(const char* key);  // Beschriftung, die beim Sprachwechsel mitkommt
+    std::vector<std::pair<QLabel*, const char*>> tlabels_;
+    int selSub_ = -1, selTrack_ = 0;
+    class TrackHeader* trackHeader_ = nullptr;
+    QGraphicsPixmapItem* subItem_ = nullptr;
+    QString subKey_;
+    QPushButton* btnSubs_ = nullptr;
+    QLabel *lblOpacity_ = nullptr, *lblClipVol_ = nullptr, *lblTrackOf_ = nullptr;
+    QSlider *sliderOpacity_ = nullptr, *sliderClipVol_ = nullptr;
+    QLabel *lblTrackTitle_ = nullptr, *lblTrackVol_ = nullptr, *lblTrackInfo_ = nullptr;
+    QSlider* sliderTrackVol_ = nullptr;
+    QCheckBox *chkTrackMute_ = nullptr, *chkTrackSolo_ = nullptr;
+    QPushButton* btnDelTrack_ = nullptr;
+    QPlainTextEdit* subEdit_ = nullptr;
+    QDoubleSpinBox *spSubT0_ = nullptr, *spSubT1_ = nullptr;
+    QComboBox *subFont_ = nullptr, *subPos_ = nullptr, *subLook_ = nullptr;
+    QSlider* subSize_ = nullptr;
+    QLabel* lblSubSize_ = nullptr;
+    QPushButton *btnSubColor_ = nullptr, *btnSubEdge_ = nullptr;
+    bool subUndo_ = false;
     // Musik-Plugin: Warteschlange und Bibliothek links
     void openPlugins();
     void playList(const QStringList& paths, int index);
