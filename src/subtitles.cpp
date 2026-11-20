@@ -279,13 +279,15 @@ bool whisperModelReady(const QString& id) {
     return false;
 }
 
+// Namen absichtlich ohne "-windows-x64.zip" / "-linux-x86_64.tar.gz" am Ende: der Updater älterer Versionen sucht
+// sein Paket über diese Endungen und darf das whisper-Archiv nie für ein Vidline-Update halten
 QString whisperProgramAsset() {
 #if defined(Q_OS_WIN)
-    return QSysInfo::currentCpuArchitecture() == "x86_64" ? "whisper-windows-x64.zip" : QString();
+    return QSysInfo::currentCpuArchitecture() == "x86_64" ? "whisper-cli.windows-x64.zip" : QString();
 #elif defined(Q_OS_MAC)
-    return QSysInfo::currentCpuArchitecture().contains("arm") ? "whisper-macos-apple-silicon.tar.gz" : "whisper-macos-intel.tar.gz";
+    return QSysInfo::currentCpuArchitecture().contains("arm") ? "whisper-cli.macos-apple-silicon.tgz" : "whisper-cli.macos-intel.tgz";
 #else
-    return QSysInfo::currentCpuArchitecture() == "x86_64" ? "whisper-linux-x86_64.tar.gz" : QString();
+    return QSysInfo::currentCpuArchitecture() == "x86_64" ? "whisper-cli.linux-x86_64.tgz" : QString();
 #endif
 }
 

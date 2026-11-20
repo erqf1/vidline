@@ -516,6 +516,16 @@ void MainWindow::subtitleTest(const QString& dir, bool online) {
     c->check("whisper-Aufruf: übersetzen", whisperArgs("m", "a", "de", true, "o", 2).contains("-tr"));
     c->check("Modelle aus offizieller Quelle", whisperModelUrl("base") == "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin");
     c->check("Programm für dieses System", !whisperProgramAsset().isEmpty() && whisperProgramUrls().size() >= 1, whisperProgramAsset());
+    {
+        // Der Updater älterer Versionen (bis 1.16) erkennt sein Paket an diesen Endungen - whisper darf nie passen
+        bool clash = false;
+        for (const char* n : {"whisper-cli.windows-x64.zip", "whisper-cli.linux-x86_64.tgz", "whisper-cli.macos-intel.tgz",
+                              "whisper-cli.macos-apple-silicon.tgz"})
+            for (const char* suf : {"-windows-x64-setup.exe", "-windows-x64.zip", "-macos-apple-silicon.dmg", "-macos-intel.dmg",
+                                    "_amd64.deb", "-x86_64.pkg.tar.zst", "-linux-x86_64.tar.gz"})
+                clash |= QString(n).endsWith(suf);
+        c->check("whisper-Dateien im Release stören den Updater nicht", !clash);
+    }
     c->check("Plugin in den Einstellungen", [] {
         for (const PluginInfo& p : plugins()) if (QString(p.id) == "subtitles") return true;
         return false;

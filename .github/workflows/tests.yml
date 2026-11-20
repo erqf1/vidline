@@ -1,0 +1,99 @@
+name: Tests
+
+# Unsichtbare Tests (offscreen) auf allen Systemen: Spuren, Export-Vorlagen (echte Exporte) und Untertitel (ohne Netz)
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+env:
+  QT_VERSION: '6.8.3'
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+          - os: windows-latest
+          - os: macos-15
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Abhängigkeiten (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev qt6-multimedia-dev libgl1-mesa-dev cmake ninja-build ffmpeg \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
+      - uses: jurplel/install-qt-action@v4
+        if: runner.os != 'Linux'
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: ${{ runner.os == 'Windows' && 'win64_msvc2022_64' || '' }}
+          modules: qtmultimedia
+          cache: true
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - name: Bauen
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$QT_ROOT_DIR"
+          else
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ${QT_ROOT_DIR:+"-DCMAKE_PREFIX_PATH=$QT_ROOT_DIR"}
+          fi
+          cmake --build build --parallel
+      - name: ffmpeg neben das Programm (Windows, macOS)
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          python3 -m venv .venv || python -m venv .venv
+          PY=.venv/bin/python; [ -f "$PY" ] || PY=.venv/Scripts/python.exe
+          "$PY" -m pip install -q imageio-ffmpeg
+          FF=$("$PY" -c "import imageio_ffmpeg as i;print(i.get_ffmpeg_exe())")
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp "$FF" build/ffmpeg.exe
+            windeployqt --no-translations build/Vidline.exe
+          else
+            cp "$FF" build/Vidline.app/Contents/MacOS/ffmpeg
+            chmod +x build/Vidline.app/Contents/MacOS/ffmpeg
+          fi
+      - name: Tests
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          case "$RUNNER_OS" in
+            Linux) APP=build/vidline ;;
+            Windows) APP=build/Vidline.exe ;;
+            macOS) APP=build/Vidline.app/Contents/MacOS/Vidline ;;
+          esac
+          fail=0
+          for t in trackstest presettest subtest; do
+            S="$PWD/test-out/settings-$t"
+            mkdir -p "$S/WSoftware" test-out
+            printf '[General]\nlanguage=de\n' > "$S/WSoftware/VideoEditor.ini"
+            echo "::group::$t"
+            if [ "$RUNNER_OS" = "Windows" ]; then
+              # GUI-Programm: auf das Ende warten und den Exit-Code holen
+              W() { cygpath -w "$1"; }
+              pwsh -NoProfile -Command "\$env:VIDLINE_SETTINGS='$(W "$S")'; \$env:VIDLINE_DATA='$(W "$PWD/test-out/data-$t")'; \$p = Start-Process -FilePath '$(W "$APP")' -ArgumentList '--$t','$(W "$PWD/test-out")' -Wait -PassThru; exit \$p.ExitCode" || fail=1
+            else
+              VIDLINE_SETTINGS="$S" VIDLINE_DATA="$PWD/test-out/data-$t" timeout 1500 "$APP" --$t "$PWD/test-out" || fail=1
+            fi
+            cat test-out/*-ergebnis.txt 2>/dev/null | grep -E "^FEHL|Prüfungen" || true
+            echo "::endgroup::"
+          done
+          for f in test-out/*-ergebnis.txt; do echo "== $f"; cat "$f"; done
+          ls test-out/*-ergebnis.txt | wc -l | grep -q 3 || { echo "::error::nicht alle Ergebnisse da"; fail=1; }
+          exit $fail
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-ergebnisse-${{ matrix.os }}
+          path: |
+            test-out/*.txt
+            test-out/*.png
