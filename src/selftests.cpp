@@ -324,7 +324,8 @@ void MainWindow::presetTest(const QString& dir) {
     c->check("Bildfläche bei Zuschnitt 16:9 -> 9:16", compositionSize(1280, 720, 1080, 1920, 1) == QSize(3414, 1920));
     c->check("Gleiches Seitenverhältnis: keine Umrechnung", compositionSize(1280, 720, 1920, 1080, 0) == QSize(1920, 1080));
     {
-        const ExportPreset* d = findPreset(builtinPresets(), "discord10");
+        const QList<ExportPreset> builtins = builtinPresets();  // Zeiger aus findPreset gelten nur, solange die Liste lebt
+        const ExportPreset* d = findPreset(builtins, "discord10");
         const ExportPlan lng = planPreset(*d, 1920, 1080, 60, 600, true);
         c->check("Discord 10 MB, 10 min: kleinere Auflösung, 30 fps", lng.o.finalH() <= 360 && lng.o.fps == 30 && lng.twoPass,
                  QString("%1×%2 %3 kbit/s").arg(lng.o.finalW()).arg(lng.o.finalH()).arg(lng.o.videoKbps));
@@ -344,7 +345,8 @@ void MainWindow::presetTest(const QString& dir) {
         p.format = "mkv";
         p.quality = 0;
         saveCustomPreset(p);
-        const ExportPreset* got = findPreset(customPresets(), "custom:Mein Kanal");
+        const QList<ExportPreset> own = customPresets();
+        const ExportPreset* got = findPreset(own, "custom:Mein Kanal");
         c->check("Eigene Vorlage gespeichert und gelesen", got && got->w == 1280 && got->fit == 2 && got->maxMB == 25 &&
                                                              got->format == "mkv" && !got->builtin);
         saveCustomPreset(p);
