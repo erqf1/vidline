@@ -2,16 +2,19 @@ ERGEBNIS CLOUD-SESSION vidline-117
 
 1. Aufgabe und Status
    Vidline 1.17.0 mit automatischen Untertiteln (whisper.cpp-Plugin), mehreren Spuren und Export-Vorlagen bauen,
-   testen und veröffentlichen. Status: fertig (Release-Workflow läuft beim Schreiben, Stand unten)
+   testen und veröffentlichen. Status: TEILWEISE – alles gebaut und getestet (CI grün), aber NICHT veröffentlicht:
+   der Tag-Push v1.17.0 wird aus der Cloud abgelehnt (HTTP 403, nur der Session-Branch ist beschreibbar).
 
 2. Branch, Commits, PR, Release
    - Branch: claude/festive-euler-nxo1y9 (ab main bb2da44)
-   - Code-Stand mit grünen Tests: d30f17d; Release-Commit: dieser Commit „Vidline 1.17.0 …“
+   - Commits: Release-Commit c271f5b „Vidline 1.17.0: …“ (Code-Stand wie d30f17d), danach nur diese Datei
    - PR nach main: https://github.com/erqf1/vidline/pull/1 (nicht gemergt – Entscheidung des Nutzers)
-   - Tag: v1.17.0 auf dem Release-Commit des Branches (nicht auf main)
-   - CI: Workflow „Tests“ grün auf Ubuntu 24.04, Windows, macOS 15 (Lauf 6 auf d30f17d);
-     Release-Probelauf per workflow_dispatch grün (Windows, Linux, Arch, macOS Intel + Apple Silicon, whisper-cli für alle 4)
-   - Release: https://github.com/erqf1/vidline/releases/tag/v1.17.0 (Ergebnis wird nachgetragen)
+   - Tag v1.17.0: NICHT gepusht (403 vom Git-Proxy, 3 Versuche). Kein GitHub-Release erstellt.
+   - CI: Workflow „Tests“ grün auf Ubuntu 24.04, Windows, macOS 15 (Läufe 8 + 9 auf c271f5b: grün);
+     Release-Workflow per workflow_dispatch auf c271f5b (Lauf 39): alle Build-Jobs grün, „release“ übersprungen
+     (baut Windows-Installer/Zip, deb, tar.gz, Arch, macOS Intel + Apple Silicon und whisper-cli für alle 4 Systeme;
+     der Job „release“ läuft nur bei einem Tag)
+   - Release: ausstehend – entsteht automatisch, sobald der Nutzer den Tag pusht (siehe 5.)
 
 3. Was geändert wurde
    - Untertitel-Plugin (src/subtitles.*): Einstellungen → Plugins → Untertitel. whisper-cli + Modell (Tiny/Base/Small/
@@ -43,6 +46,7 @@ ERGEBNIS CLOUD-SESSION vidline-117
      Enthält echte Exporte je Vorlage (Auflösung, Länge, Dateigröße), 2-Pass-Zielgröße (≤ 1 MB, 77 % genutzt),
      Pixel-/Tonband-Prüfungen der Spur-Mischung, eingebrannte Untertitel im Bild, Untertitelspur in MP4/MKV,
      unveränderte ffmpeg-Befehle für Alt-Projekte (Golden-Vergleich mit 1.16).
+   - Gegenprobe auf c271f5b lokal: alle Tests erneut grün.
    - --subtest --online lokal 48/48: Modell „tiny“ von Hugging Face geladen (mit Fortschritt), gesprochener Testsatz
      (ffmpeg/flite) korrekt erkannt: „Hello world, this is a short test of automatic subtitles.“
    - Programm-Download + Entpacken + Start von whisper-cli über einen lokalen Server mit Release-artigem Archiv getestet.
@@ -52,7 +56,12 @@ ERGEBNIS CLOUD-SESSION vidline-117
      Bedienung per echter Maus (Ziehen zwischen Spuren) nur über Code-Pfade/Tests, nicht von Hand.
 
 5. Offen / Risiken / zu tun
-   - PR nach main mergen (Release wurde vom Branch getaggt; main ist bis zum Merge noch 1.16).
+   - NUTZER: PR #1 nach main mergen, dann den Release auslösen:
+       git checkout main && git pull
+       git tag -a v1.17.0 -m "Vidline 1.17.0" && git push origin v1.17.0
+     Der Workflow baut alles, prüft, dass alle 10 Pakete da sind (6 × Vidline, 4 × whisper-cli), und veröffentlicht
+     mit den deutschen Notizen aus packaging/release-notes.md (Link auf mert.win/vid/changelog.html).
+   - Erst danach funktioniert der whisper-cli-Download im Plugin (lädt aus dem Release v1.17.0 bzw. „latest“).
    - Website: website-updates/changelog-1.17.0.html in changelog.html, features-1.17.0.html auf mert.win/vid/,
      website-updates/img/*.webp nach mert.win/vid/img/ hochladen (Anleitung: website-updates/LIESMICH.md).
    - Nach dem Release einmal unter Windows/macOS: Plugin „Untertitel“ installieren, Untertitel erzeugen (lädt whisper-cli
@@ -62,5 +71,6 @@ ERGEBNIS CLOUD-SESSION vidline-117
 
 6. Nächste Schritte für die Haupt-Session
    - PR prüfen und mergen; Website-Schnipsel einbauen und Bilder hochladen.
-   - Release-Seite ansehen (14 Dateien inkl. whisper-cli.*) und Auto-Update von 1.16 testen.
+   - Nach dem Tag: Release-Seite prüfen (11 Dateien: 6 Vidline-Pakete, Arch-Paket, 4 × whisper-cli.*) und Auto-Update
+     von 1.16 auf 1.17 testen; einmal Untertitel unter Windows/macOS erzeugen.
    - Ideen für 1.18: Wortgenaue Untertitel-Animation, Übergänge zwischen Clips, Keyframes für Overlays.
