@@ -9,6 +9,7 @@
 #include <QFile>
 #include <QImage>
 #include <QJsonDocument>
+#include <QLineEdit>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSettings>
@@ -105,6 +106,15 @@ bool near(double a, double b, double tol) { return std::abs(a - b) <= tol; }
 
 bool colorNear(QRgb c, int r, int g, int b, int tol) {
     return std::abs(qRed(c) - r) <= tol && std::abs(qGreen(c) - g) <= tol && std::abs(qBlue(c) - b) <= tol;
+}
+
+// hellster Punkt eines Bereichs (0..255)
+int maxLuma(const QImage& img, QRect r) {
+    r &= img.rect();
+    int m = 0;
+    for (int y = r.top(); y <= r.bottom(); ++y)
+        for (int x = r.left(); x <= r.right(); ++x) m = std::max(m, qGray(img.pixel(x, y)));
+    return m;
 }
 
 // Helligkeit eines Bereichs (0..255)
@@ -427,6 +437,12 @@ void MainWindow::presetTest(const QString& dir) {
         ExportDialog dlg(this, pr_.vw, pr_.vh, 30, pr_.sources[0].path);
         dlg.setEstimateInputs(pr_.total(), pr_.sources[0].duration, pr_.natW, pr_.natH, true);
         dlg.selectPreset("discord10");
+        // keine echten Pfade in den Bildern
+        const auto edits = dlg.findChildren<QLineEdit*>();
+        if (edits.size() >= 2) {
+            edits[0]->setText("Urlaub_edit");
+            edits[1]->setText("Videos");
+        }
         dlg.show();
         pause(400);
         c->check("Dialog Discord: Grenze 10 MB angezeigt", dlg.estimateText().contains("10 MB") && dlg.twoPass(), dlg.estimateText());
@@ -563,9 +579,9 @@ void MainWindow::subtitleTest(const QString& dir, bool online) {
         const QImage a = frameAt(out, 0.5, tmp.path()), b = frameAt(out, 1.5, tmp.path()), d = frameAt(out, 2.5, tmp.path());
         const QRect area(150, 240, 340, 110);
         c->check("Eingebrannt: Export", ok, err.left(300));
-        c->check("Eingebrannt: Text nur zwischen 1 und 2 s", !a.isNull() && !b.isNull() && !d.isNull() &&
-                                                                meanLuma(b, area) > meanLuma(a, area) + 8 && near(meanLuma(a, area), meanLuma(d, area), 2),
-                 QString("%1 / %2 / %3").arg(meanLuma(a, area), 0, 'f', 1).arg(meanLuma(b, area), 0, 'f', 1).arg(meanLuma(d, area), 0, 'f', 1));
+        c->check("Eingebrannt: weißer Text nur zwischen 1 und 2 s", !a.isNull() && !b.isNull() && !d.isNull() &&
+                                                                       maxLuma(b, area) > 200 && maxLuma(a, area) < 70 && maxLuma(d, area) < 70,
+                 QString("hellster Punkt %1 / %2 / %3").arg(maxLuma(a, area)).arg(maxLuma(b, area)).arg(maxLuma(d, area)));
         o.outW = 360;  // Vorlage 9:16: Untertitel sitzen im Zielbild
         o.outH = 640;
         o.width = 360;
@@ -624,6 +640,14 @@ void MainWindow::subtitleTest(const QString& dir, bool online) {
     selectSub(0);
     pause(800);
     grab().save(QDir(dir).filePath("untertitel-editor.png"));
+    if (qEnvironmentVariableIsSet("VIDLINE_DEBUG_INSP"))
+        for (int i = 0; i < insp_->count(); ++i) {
+            QWidget* pg = insp_->widget(i);
+            QString wide;
+            for (QWidget* w : pg->findChildren<QWidget*>())
+                if (w->minimumSizeHint().width() > 200) wide += QString("%1:%2 ").arg(w->metaObject()->className()).arg(w->minimumSizeHint().width());
+            c->note(QString("Seite %1: %2 px, Bereich %3 px – %4").arg(i).arg(pg->minimumSizeHint().width()).arg(insp_->width()).arg(wide));
+        }
     inspCard_->grab().save(QDir(dir).filePath("untertitel-eigenschaften.png"));
     {
         SubtitleDialog dlg(pr_, this);

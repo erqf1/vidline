@@ -523,6 +523,8 @@ QWidget* MainWindow::buildInspector() {
     tv->addWidget(lblFont_);
     fontBox_ = new QComboBox;  // Inhalt erst beim ersten Text (ensureFonts) - alle Schriften aufzählen dauert
     fontBox_->setMaxVisibleItems(16);
+    fontBox_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    fontBox_->setMinimumContentsLength(8);
     connect(fontBox_, &QComboBox::activated, this, [this] {
         Item* it = pr_.item(selItem_);
         if (!it || it->kind != Item::Text) return;
@@ -729,12 +731,13 @@ QWidget* MainWindow::buildSubtitlePage() {
             modelEdited(true);
         });
     }
-    times->addWidget(tl("start_s"));
-    times->addWidget(spSubT0_, 1);
-    times->addWidget(tl("end_s"));
-    times->addWidget(spSubT1_, 1);
-    v->addLayout(times);
-    auto* rowB = new QHBoxLayout;
+    delete times;
+    v->addWidget(tl("start_s"));
+    v->addWidget(spSubT0_);
+    v->addWidget(tl("end_s"));
+    v->addWidget(spSubT1_);
+    auto* rowB = new QVBoxLayout;
+    rowB->setSpacing(6);
     auto* bAdd = mk("sub_add", nullptr, Ic::Plus);
     auto* bDel = mk("delete_el", nullptr, Ic::Trash);
     connect(bAdd, &QPushButton::clicked, this, &MainWindow::addSubtitleAtPlayhead);
@@ -753,6 +756,9 @@ QWidget* MainWindow::buildSubtitlePage() {
     v->addWidget(tl("font"));
     subFont_ = new QComboBox;
     subFont_->setMaxVisibleItems(16);
+    // lange Schriftnamen dürfen die Eigenschaften nicht breiter machen als den Bereich
+    subFont_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    subFont_->setMinimumContentsLength(8);
     connect(subFont_, &QComboBox::activated, this, [this] { editSubStyle([this](SubStyle& st) { st.font = subFont_->currentData().toString(); }); });
     v->addWidget(subFont_);
     lblSubSize_ = new QLabel;
@@ -771,10 +777,12 @@ QWidget* MainWindow::buildSubtitlePage() {
     v->addWidget(subSize_);
     v->addWidget(tl("position"));
     subPos_ = new QComboBox;
+    subPos_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     connect(subPos_, &QComboBox::activated, this, [this](int i) { editSubStyle([i](SubStyle& st) { st.pos = i; }); });
     v->addWidget(subPos_);
     v->addWidget(tl("sub_look"));
     subLook_ = new QComboBox;
+    subLook_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     connect(subLook_, &QComboBox::activated, this, [this](int i) { editSubStyle([i](SubStyle& st) { st.look = i; }); });
     v->addWidget(subLook_);
     auto* crow = new QHBoxLayout;
@@ -793,7 +801,7 @@ QWidget* MainWindow::buildSubtitlePage() {
     }
     crow->addWidget(tl("color"));
     crow->addWidget(btnSubColor_);
-    crow->addSpacing(10);
+    crow->addSpacing(8);
     crow->addWidget(tl("sub_edge"));
     crow->addWidget(btnSubEdge_);
     crow->addStretch();
@@ -1404,7 +1412,10 @@ void MainWindow::retranslate() {
     lblShapeColor_->setText(T("color"));
     chkFill_->setText(T("fill"));
     chkBg_->setText(T("background"));
-    for (QCheckBox* c : {chkPieceDenoise_, chkAudioDenoise_}) {
+    for (QCheckBox* c : {chkPieceDenoise_, chkAudioDenoise_, chkTrackMute_, chkTrackSolo_}) {
+        // lange Beschriftung darf die Eigenschaften nicht breiter als ihren Bereich machen (der Tooltip zeigt alles)
+        c->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        if (c == chkTrackMute_ || c == chkTrackSolo_) continue;
         c->setText(T("denoise"));
         c->setToolTip(T("denoise_tip"));
     }
