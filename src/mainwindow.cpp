@@ -4509,6 +4509,28 @@ void MainWindow::musicShots(const QString& dir) {
             check("Bibliothek bleibt gespeichert", again.songs().size() == 6 && again.playlists().size() == 1 &&
                                                        again.playlists().first().paths.size() == 3);
 
+            // ---- Ein Klick auf einen Song spielt ihn (1.17); ein Doppelklick gleich danach startet ihn nicht neu
+            musicPanel_->showView(0);
+            QListWidget* songs = nullptr;
+            for (QListWidget* l : musicPanel_->findChildren<QListWidget*>())
+                if (l->isVisible() && l->viewMode() == QListView::ListMode && l->count() > 1) songs = l;
+            if (songs) {
+                const QPoint at = songs->visualItemRect(songs->item(1)).center();
+                auto click = [songs, at](QEvent::Type t) {
+                    QMouseEvent ev(t, QPointF(at), songs->viewport()->mapToGlobal(QPointF(at)), Qt::LeftButton,
+                                   t == QEvent::MouseButtonRelease ? Qt::NoButton : Qt::LeftButton, Qt::NoModifier);
+                    QApplication::sendEvent(songs->viewport(), &ev);
+                };
+                const int before = opened_;
+                click(QEvent::MouseButtonPress);
+                click(QEvent::MouseButtonRelease);
+                check("Ein Klick spielt den Song", opened_ == before + 1, QString::number(opened_ - before));
+                click(QEvent::MouseButtonDblClick);
+                click(QEvent::MouseButtonRelease);
+                check("Doppelklick danach startet nicht noch einmal", opened_ == before + 1, QString::number(opened_ - before));
+            } else {
+                check("Songliste für den Klick-Test gefunden", false);
+            }
             // ---- Warteschlange: von selbst weiter, vor und zurück, Wiederholen, Zufall
             musicPanel_->showView(0);
             // Verlauf mitschreiben: welcher Song wann geöffnet ist und wie der Player steht
