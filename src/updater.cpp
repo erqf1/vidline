@@ -171,7 +171,8 @@ QString Updater::pickAsset(const QJsonObject& rel, QString* url) const {
     for (const QJsonValue& v : rel.value("assets").toArray()) {
         const QJsonObject a = v.toObject();
         const QString n = a.value("name").toString();
-        if (n.endsWith(suffix, Qt::CaseInsensitive) && !n.contains("-src", Qt::CaseInsensitive)) {
+        if (n.endsWith(suffix, Qt::CaseInsensitive) && !n.contains("-src", Qt::CaseInsensitive) &&
+            !n.startsWith("whisper", Qt::CaseInsensitive)) {  // Spracherkennung fürs Untertitel-Plugin, kein Update
             *url = a.value("browser_download_url").toString();
             return n;
         }

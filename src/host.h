@@ -37,6 +37,7 @@ public:
     virtual void endScrub() = 0;
     virtual double viewScale() const = 0;
     virtual int timelineViewportWidth() const = 0;
+    virtual int timelineViewportHeight() const = 0;
     virtual const ThumbSet* thumbs(int srcIndex) const = 0;
     virtual const WaveSet* waves(const QString& path) const = 0;
     virtual void timelineZoomed() = 0;  // nach dem Zoomen: Abspielposition sichtbar halten
@@ -44,4 +45,14 @@ public:
     virtual QRectF videoRect() const = 0;  // Bereich des Videos in Szenenkoordinaten
     virtual bool showGuides() const = 0;   // Rahmen/Griffe anzeigen (nicht im Vollbild)
     virtual void insertMediaAt(const QString& path, double t) = 0;  // Datei an Stelle t einfügen (Drag & Drop)
+    // Spuren und Untertitel
+    virtual int selSub() const = 0;    // Index des ausgewählten Untertitels, -1 = keiner
+    virtual void selectSub(int i) = 0;
+    virtual int selTrack() const = 0;  // ausgewählte Spur (Kopf angeklickt), 0 = keine
+    virtual void selectTrack(int id) = 0;
+    // Clip auf eine andere Spur legen: kind 'p' Abschnitt (id = Index), 'i' Element, 'a' Ton; track -1 = neue Spur
+    virtual bool moveToTrack(char kind, int id, int track) = 0;
+    virtual void insertMediaOnTrack(const QString& path, double t, int track) = 0;
+    virtual void tracksChanged() = 0;  // Stumm/Solo/Lautstärke einer Spur geändert
+    virtual void overlayMoved() {}     // Element in der Vorschau verschoben/vergrößert (Overlay-Video zieht mit)
 };

@@ -10,6 +10,9 @@ permissions:
 
 env:
   QT_VERSION: '6.8.3'
+  # Spracherkennung fürs Untertitel-Plugin: whisper-cli aus dem offiziellen Quellcode (MIT), fester Tag
+  WHISPER_TAG: 'v1.9.5'
+  WHISPER_FLAGS: '-DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF -DWHISPER_SDL2=OFF -DWHISPER_CURL=OFF'
 
 jobs:
   windows:
@@ -47,12 +50,24 @@ jobs:
           $ver = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { '0.0.0' }
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" packaging/windows/vidline.iss
           Move-Item dist/Vidline-windows-x64-setup.exe .
+      - name: whisper-cli
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch $env:WHISPER_TAG https://github.com/ggml-org/whisper.cpp wcpp
+          cmake -S wcpp -B wcpp/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded $env:WHISPER_FLAGS.Split(' ')
+          cmake --build wcpp/build --target whisper-cli
+          New-Item -ItemType Directory -Path wdist | Out-Null
+          Copy-Item wcpp/build/bin/whisper-cli.exe wdist/
+          Copy-Item wcpp/LICENSE wdist/whisper.cpp-LICENSE.txt
+          & wdist/whisper-cli.exe --help | Select-Object -First 3
+          Compress-Archive -Path wdist/* -DestinationPath whisper-cli.windows-x64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: windows
           path: |
             Vidline-windows-x64.zip
             Vidline-windows-x64-setup.exe
+            whisper-cli.windows-x64.zip
 
   linux:
     runs-on: ubuntu-24.04
@@ -100,12 +115,24 @@ jobs:
           chmod +x "$D/ffmpeg"
           cp assets/icon.png assets/vidline.desktop packaging/linux/install.sh LICENSE README.md "$D/"
           tar czf vidline-linux-x86_64.tar.gz "$D"
+      - name: whisper-cli
+        run: |
+          git clone --depth 1 --branch "$WHISPER_TAG" https://github.com/ggml-org/whisper.cpp wcpp
+          cmake -S wcpp -B wcpp/build -G Ninja -DCMAKE_BUILD_TYPE=Release $WHISPER_FLAGS "-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc"
+          cmake --build wcpp/build --target whisper-cli
+          mkdir wdist
+          cp wcpp/build/bin/whisper-cli wdist/
+          strip wdist/whisper-cli
+          cp wcpp/LICENSE wdist/whisper.cpp-LICENSE.txt
+          ./wdist/whisper-cli --help | head -3
+          tar czf whisper-cli.linux-x86_64.tgz -C wdist .
       - uses: actions/upload-artifact@v4
         with:
           name: linux
           path: |
             vidline_amd64.deb
             vidline-linux-x86_64.tar.gz
+            whisper-cli.linux-x86_64.tgz
 
   arch:
     runs-on: ubuntu-latest
@@ -171,21 +198,45 @@ jobs:
           cp -R build/Vidline.app dmg/
           ln -s /Applications dmg/Applications
           hdiutil create -volname Vidline -srcfolder dmg -ov -format UDZO "Vidline-macos-${{ matrix.name }}.dmg"
+      - name: whisper-cli
+        run: |
+          git clone --depth 1 --branch "$WHISPER_TAG" https://github.com/ggml-org/whisper.cpp wcpp
+          EXTRA=""
+          if [ "${{ matrix.name }}" = "intel" ]; then EXTRA="-DGGML_METAL=OFF"; fi
+          cmake -S wcpp -B wcpp/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 $WHISPER_FLAGS $EXTRA
+          cmake --build wcpp/build --target whisper-cli --parallel
+          mkdir wdist
+          cp wcpp/build/bin/whisper-cli wdist/
+          cp wcpp/LICENSE wdist/whisper.cpp-LICENSE.txt
+          codesign --force -s - wdist/whisper-cli
+          ./wdist/whisper-cli --help | head -3
+          tar czf whisper-cli.macos-${{ matrix.name }}.tgz -C wdist .
       - uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.name }}
-          path: Vidline-macos-${{ matrix.name }}.dmg
+          path: |
+            Vidline-macos-${{ matrix.name }}.dmg
+            whisper-cli.macos-${{ matrix.name }}.tgz
 
   release:
     if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.windows.result == 'success' && needs.linux.result == 'success' && needs.macos.result == 'success' }}
     needs: [windows, linux, arch, macos]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+      - name: Alle Pakete vorhanden?
+        run: |
+          for f in Vidline-windows-x64.zip Vidline-windows-x64-setup.exe vidline_amd64.deb vidline-linux-x86_64.tar.gz \
+                   Vidline-macos-intel.dmg Vidline-macos-apple-silicon.dmg whisper-cli.windows-x64.zip \
+                   whisper-cli.linux-x86_64.tgz whisper-cli.macos-intel.tgz whisper-cli.macos-apple-silicon.tgz; do
+            test -s "dist/$f" || { echo "::error::fehlt: $f"; exit 1; }
+          done
+          ls -la dist
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          generate_release_notes: true
+          body_path: packaging/release-notes.md

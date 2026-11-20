@@ -13,6 +13,7 @@ const QList<PluginInfo>& plugins() {
     static const QList<PluginInfo> list = {
         {"music", "plugin_music", "plugin_music_desc", Ic::Music},
         {"videodl", "plugin_videodl", "plugin_videodl_desc", Ic::Download},
+        {"subtitles", "plugin_subs", "plugin_subs_desc", Ic::Subtitles},
     };
     return list;
 }

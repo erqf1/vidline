@@ -303,6 +303,30 @@ QIcon makeIcon(Ic id, const QColor& c) {
         p.drawPath(r.united(t1).united(t2).simplified());
         break;
     }
+    case Ic::Subtitles: {
+        p.drawRoundedRect(QRectF(10, 20, 80, 60), 10, 10);
+        p.drawLine(24, 52, 46, 52);
+        p.drawLine(56, 52, 76, 52);
+        p.drawLine(24, 66, 62, 66);
+        break;
+    }
+    case Ic::Layers: {
+        p.drawRoundedRect(QRectF(10, 14, 56, 42), 7, 7);
+        fill();
+        p.drawRoundedRect(QRectF(40, 46, 50, 38), 7, 7);
+        stroke();
+        break;
+    }
+    case Ic::Plus:
+        p.drawLine(50, 18, 50, 82);
+        p.drawLine(18, 50, 82, 50);
+        break;
+    case Ic::Template: {
+        p.drawRoundedRect(QRectF(14, 12, 72, 76), 8, 8);
+        p.drawLine(14, 36, 86, 36);
+        p.drawLine(42, 36, 42, 88);
+        break;
+    }
     case Ic::Download: {
         p.drawLine(50, 12, 50, 62);
         p.drawLine(32, 44, 50, 62);

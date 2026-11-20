@@ -2,6 +2,10 @@
 
 #include <QFileInfo>
 #include <QMimeData>
+#include <QContextMenuEvent>
+#include <QMenu>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QLinearGradient>
 #include <QMouseEvent>
 #include <QPainter>
@@ -10,6 +14,7 @@
 #include <cmath>
 #include "i18n.h"
 #include "theme.h"
+#include "icons.h"
 
 static constexpr double kMinPiece = 0.1;
 
@@ -31,10 +36,74 @@ double Timeline::basePps() const {
 
 double Timeline::pps() const { return frozen_ ? frozenPps_ : basePps() * zoom_; }
 
+static bool onVTrack(const Project& pr, const Item& it) {
+    const Track* t = pr.track(it.track);
+    return t && !t->audio && it.track != kMainTrack;
+}
+
+QList<Timeline::Row> Timeline::rows() const {
+    const Project& pr = host_->pr();
+    QList<Row> r;
+    r << Row{Row::Main, kMainTrack, double(RULER), double(ROW)};
+    double y = RULER + ROW + 6;
+    for (int id : pr.trackIds(false))
+        if (id != kMainTrack) { r << Row{Row::VTrack, id, y, double(LANE)}; y += LANE; }
+    for (const Item& it : pr.items)
+        if (!onVTrack(pr, it)) { r << Row{Row::Lane, it.id, y, double(LANE)}; y += LANE; }
+    if (!pr.subs.isEmpty()) { r << Row{Row::Subs, 0, y, double(LANE)}; y += LANE; }
+    for (int id : pr.trackIds(true)) { r << Row{Row::ATrack, id, y, double(LANE)}; y += LANE; }
+    return r;
+}
+
+int Timeline::rowAt(double y, const QList<Row>& rs) const {
+    for (int i = 0; i < rs.size(); ++i)
+        if (y >= rs[i].y && y < rs[i].y + rs[i].h) return i;
+    return -1;
+}
+
+int Timeline::targetTrack(double y, bool audio) const {
+    const QList<Row> rs = rows();
+    const int i = rowAt(y, rs);
+    if (i < 0) return 0;
+    if (audio) return rs[i].kind == Row::ATrack ? rs[i].id : 0;
+    return rs[i].kind == Row::VTrack || rs[i].kind == Row::Main ? rs[i].id : 0;
+}
+
+QRectF Timeline::itemRect(const Item& it, const QList<Row>& rs) const {
+    const bool tr = onVTrack(host_->pr(), it);
+    for (const Row& r : rs)
+        if ((tr && r.kind == Row::VTrack && r.id == it.track) || (!tr && r.kind == Row::Lane && r.id == it.id))
+            return QRectF(xOf(it.t0), r.y + 2, std::max(6.0, (it.t1 - it.t0) * pps()), LANE - 4);
+    return {};
+}
+
+QRectF Timeline::cueRect(int i, const QList<Row>& rs) const {
+    const Project& pr = host_->pr();
+    for (const Row& r : rs)
+        if (r.kind == Row::Subs) {
+            const SubCue& c = pr.subs[i];
+            return QRectF(xOf(c.t0), r.y + 2, std::max(4.0, (c.t1 - c.t0) * pps()), LANE - 4);
+        }
+    return {};
+}
+
+int Timeline::cueAt(const QPointF& pos) const {
+    const QList<Row> rs = rows();
+    const Project& pr = host_->pr();
+    for (int i = 0; i < pr.subs.size(); ++i)
+        if (cueRect(i, rs).adjusted(-3, 0, 3, 0).contains(pos)) return i;
+    return -1;
+}
+
 void Timeline::relayout() {
     Project& pr = host_->pr();
-    int lanes = std::max<int>(2, pr.items.size() + pr.audios.size());
-    setMinimumHeight(RULER + ROW + LANE * lanes + 16);
+    {
+        const QList<Row> rs = rows();
+        const int h = int(rs.last().y + rs.last().h + 16);
+        setMinimumHeight(h);
+        if (height() != std::max(h, host_->timelineViewportHeight())) resize(width(), std::max(h, host_->timelineViewportHeight()));
+        if (header_) header_->update();
+    }
     if (frozen_) {  // beim Kürzen: Maßstab bleibt, nur breiter werden, nie schmaler (sonst springt alles)
         const double w = std::max(pr.total() * pps(), fx1_.isEmpty() ? 0.0 : fx1_.last() - LEFT) + 2 * LEFT + 40;
         if (w > width()) setFixedWidth(int(std::min(16000000.0, w)));
@@ -105,7 +174,10 @@ QRectF Timeline::waveRect(int i) const {
 QRectF Timeline::audioRect(int k) const {
     Project& pr = host_->pr();
     const AudioClip& a = pr.audios[k];
-    return QRectF(xOf(a.t0), laneY(pr.items.size() + k) + 2, std::max(6.0, a.dur * pps()), LANE - 4);
+    const int tid = pr.audioTrackOf(a);
+    for (const Row& r : rows())
+        if (r.kind == Row::ATrack && r.id == tid) return QRectF(xOf(a.t0), r.y + 2, std::max(6.0, a.dur * pps()), LANE - 4);
+    return {};
 }
 
 double Timeline::volLineY(const QRectF& area, double volume) const {
@@ -275,26 +347,61 @@ void Timeline::paintEvent(QPaintEvent* ev) {
         p.setOpacity(1.0);
     }
 
-    // Spuren: erst Elemente (Bild/Text/Unschärfe), dann Ton
-    int lane = 0;
+    // Spuren: Hintergrund der Spur-Zeilen (auch leere Spuren sieht man), Ziel beim Verschieben hervorgehoben
+    const QList<Row> rs = rows();
+    for (const Row& row : rs) {
+        if (row.kind == Row::Main || row.kind == Row::Lane) continue;
+        QRectF band(0, row.y + 1, width(), row.h - 2);
+        if (band.bottom() < vis.top() || band.top() > vis.bottom()) continue;
+        QColor bg = mix(th.timeline, th.panel2, 0.55);
+        if (dropTrack_ && row.id == dropTrack_) bg = mix(th.timeline, th.accent, 0.28);
+        p.fillRect(band, bg);
+    }
+    if (dropTrack_ == kMainTrack) {
+        p.setPen(QPen(th.accent, 2, Qt::DashLine));
+        p.setBrush(Qt::NoBrush);
+        p.drawRoundedRect(QRectF(1, RULER + 1, width() - 2, ROW - 4), 7, 7);
+    }
+    // Elemente (Bild/Text/Unschärfe/Video), dann Untertitel, dann Ton
     for (const Item& it : pr.items) {
-        QRectF r(xOf(it.t0), laneY(lane) + 2, std::max(6.0, (it.t1 - it.t0) * sc), LANE - 4);
-        ++lane;
+        const QRectF r = itemRect(it, rs);
+        if (r.isEmpty() || r.right() < vis.left() - 4 || r.left() > vis.right() + 4) continue;
         bool sel = host_->selItem() == it.id;
         QColor base = it.kind == Item::Blur ? blurColor() : it.kind == Item::Text ? textItemColor()
-                      : it.kind == Item::Draw ? drawItemColor() : it.kind == Item::Shape ? shapeItemColor() : imageColor();
+                      : it.kind == Item::Draw ? drawItemColor() : it.kind == Item::Shape ? shapeItemColor()
+                      : it.kind == Item::Video ? videoClipColor() : imageColor();
         p.setBrush(sel ? base.lighter(125) : base);
         p.setPen(sel ? QPen(th.accent, 2) : QPen(Qt::NoPen));
         p.drawRoundedRect(r, 6, 6);
+        p.save();
+        p.setClipRect(r);
+        if (it.kind == Item::Video && it.hasAudio)
+            drawWave(p, r, host_->waves(it.path), it.srcStart, 1.0 / sc, it.volume, true, QColor(255, 255, 255, 70), vis);
         p.setPen(Qt::white);
         p.setFont(small);
         static const char* shapeKeys[] = {"shape_rect", "shape_ellipse", "shape_arrow", "shape_line"};
-        const QString name = it.kind == Item::Blur ? T("blur")
-                             : it.kind == Item::Text ? it.text.section('\n', 0, 0)
-                             : it.kind == Item::Draw ? T("drawing")
-                             : it.kind == Item::Shape ? T(shapeKeys[std::clamp(it.shape, 0, 3)])
-                                                      : QFileInfo(it.path).fileName();
+        QString name = it.kind == Item::Blur ? T("blur")
+                       : it.kind == Item::Text ? it.text.section('\n', 0, 0)
+                       : it.kind == Item::Draw ? T("drawing")
+                       : it.kind == Item::Shape ? T(shapeKeys[std::clamp(it.shape, 0, 3)])
+                                                : QFileInfo(it.path).fileName();
+        if (it.media() && it.opacity < 0.995) name += QString("  ·  %1 %").arg(qRound(it.opacity * 100));
         p.drawText(r.adjusted(8, 0, -4, 0), Qt::AlignVCenter, name);
+        p.restore();
+    }
+    for (int i = 0; i < pr.subs.size(); ++i) {
+        const QRectF r = cueRect(i, rs);
+        if (r.right() < vis.left() - 4 || r.left() > vis.right() + 4) continue;
+        const bool sel = host_->selSub() == i;
+        p.setBrush(sel ? subtitleColor().lighter(125) : subtitleColor());
+        p.setPen(sel ? QPen(th.accent, 2) : QPen(QColor(0, 0, 0, 60), 1));
+        p.drawRoundedRect(r, 5, 5);
+        p.save();
+        p.setClipRect(r.adjusted(2, 0, -2, 0));
+        p.setPen(Qt::white);
+        p.setFont(small);
+        p.drawText(r.adjusted(6, 0, -3, 0), Qt::AlignVCenter, QString(pr.subs[i].text).replace('\n', ' '));
+        p.restore();
     }
     for (int k = 0; k < pr.audios.size(); ++k) {
         const AudioClip& a = pr.audios[k];
@@ -347,10 +454,12 @@ void Timeline::paintEvent(QPaintEvent* ev) {
 
 Item* Timeline::itemAt(const QPointF& pos) {
     Project& pr = host_->pr();
-    for (int k = 0; k < pr.items.size(); ++k) {
+    const QList<Row> rs = rows();
+    // von hinten: was später eingefügt wurde, liegt bei gleicher Spur oben
+    for (int k = pr.items.size() - 1; k >= 0; --k) {
         Item& it = pr.items[k];
-        int y = laneY(k);
-        if (pos.y() >= y && pos.y() < y + LANE && pos.x() >= xOf(it.t0) - 4 && pos.x() <= xOf(it.t1) + 4)
+        const QRectF r = itemRect(it, rs);
+        if (!r.isEmpty() && pos.y() >= r.top() - 2 && pos.y() < r.bottom() + 2 && pos.x() >= r.left() - 4 && pos.x() <= r.right() + 4)
             return &it;
     }
     return nullptr;
@@ -358,10 +467,10 @@ Item* Timeline::itemAt(const QPointF& pos) {
 
 AudioClip* Timeline::audioAt(const QPointF& pos, int* lane) {
     Project& pr = host_->pr();
-    for (int k = 0; k < pr.audios.size(); ++k) {
+    for (int k = pr.audios.size() - 1; k >= 0; --k) {
         AudioClip& a = pr.audios[k];
-        int y = laneY(pr.items.size() + k);
-        if (pos.y() >= y && pos.y() < y + LANE && pos.x() >= xOf(a.t0) - 4 && pos.x() <= xOf(a.t0 + a.dur) + 4) {
+        const QRectF r = audioRect(k);
+        if (!r.isEmpty() && pos.y() >= r.top() - 2 && pos.y() < r.bottom() + 2 && pos.x() >= r.left() - 4 && pos.x() <= r.right() + 4) {
             if (lane) *lane = k;
             return &a;
         }
@@ -450,12 +559,21 @@ void Timeline::mousePressEvent(QMouseEvent* e) {
         host_->seek(t);
         return;
     }
+    if (const int ci = cueAt(pos); ci >= 0) {
+        host_->selectSub(ci);
+        const SubCue& c = pr.subs[ci];
+        const double x0 = xOf(c.t0), x1 = xOf(c.t1);
+        char mode = std::abs(pos.x() - x0) <= 6 ? 'l' : std::abs(pos.x() - x1) <= 6 ? 'r' : 'm';
+        host_->pushUndo();
+        drag_ = {Drag::CueDrag, ci, mode, pos.x(), c.t0, c.t1, 0, pos.y()};
+        return;
+    }
     if (Item* it = itemAt(pos)) {
         host_->selectItem(it->id);
         double x0 = xOf(it->t0), x1 = xOf(it->t1);
         char mode = std::abs(pos.x() - x0) <= 6 ? 'l' : std::abs(pos.x() - x1) <= 6 ? 'r' : 'm';
         host_->pushUndo();
-        drag_ = {Drag::ItemDrag, it->id, mode, pos.x(), it->t0, it->t1, 0, pos.y()};
+        drag_ = {Drag::ItemDrag, it->id, mode, pos.x(), it->t0, it->t1, it->srcStart, pos.y()};
     } else if (AudioClip* a = audioAt(pos)) {
         host_->selectAudio(a->id);
         double x0 = xOf(a->t0), x1 = xOf(a->t0 + a->dur);
@@ -506,7 +624,11 @@ void Timeline::mouseMoveEvent(QMouseEvent* e) {
             drag_.kind = Drag::Seek;
         }
     }
+    mouseY_ = pos.y();
     if (drag_.kind == Drag::Reorder) {
+        // nach unten auf eine Video-Spur ziehen: Abschnitt wird dort zum Overlay
+        const int tt = pos.y() >= RULER + ROW ? targetTrack(pos.y(), false) : 0;
+        dropTrack_ = tt != kMainTrack ? tt : 0;
         update();
     } else if (drag_.kind == Drag::Seek) {
         host_->scrub(tOf(pos.x()));
@@ -530,10 +652,47 @@ void Timeline::mouseMoveEvent(QMouseEvent* e) {
             a->volume = v;
         }
         host_->modelEdited(true);
+    } else if (drag_.kind == Drag::CueDrag) {
+        if (drag_.index >= pr.subs.size()) return;
+        SubCue& c = pr.subs[drag_.index];
+        const double dt = (pos.x() - drag_.x0) / pps(), total = pr.total();
+        if (drag_.side == 'm') {
+            const double dur = drag_.b - drag_.a;
+            c.t0 = std::clamp(drag_.a + dt, 0.0, std::max(0.0, total - dur));
+            c.t1 = c.t0 + dur;
+        } else if (drag_.side == 'l') {
+            c.t0 = std::clamp(drag_.a + dt, 0.0, c.t1 - 0.1);
+        } else {
+            c.t1 = std::clamp(drag_.b + dt, c.t0 + 0.1, total);
+        }
+        host_->modelEdited(true);
     } else if (drag_.kind == Drag::ItemDrag) {
         Item* it = pr.item(drag_.index);
         if (!it) return;
         double dt = (pos.x() - drag_.x0) / pps(), total = pr.total();
+        // Bild/Video senkrecht auf eine andere Video-Spur ziehen (V1 erst beim Loslassen)
+        if (it->media() && drag_.side == 'm' && std::abs(pos.y() - drag_.y0) > 8) {
+            const int tt = targetTrack(pos.y(), false);
+            dropTrack_ = tt == kMainTrack && it->kind == Item::Video ? kMainTrack : 0;
+            if (tt && tt != kMainTrack && tt != it->track) {
+                it->track = tt;
+                host_->modelEdited(true);
+                relayout();
+            }
+        }
+        if (it->kind == Item::Video && drag_.side == 'l') {
+            // linken Rand eines Videos kürzen: Startpunkt in der Datei wandert mit
+            const double d = std::clamp(dt, -std::min(drag_.a, drag_.c), drag_.b - drag_.a - 0.1);
+            it->t0 = drag_.a + d;
+            it->srcStart = drag_.c + d;
+            host_->modelEdited(true);
+            return;
+        }
+        if (it->kind == Item::Video && drag_.side == 'r') {
+            it->t1 = std::clamp(drag_.b + dt, it->t0 + 0.1, std::min(total, it->t0 + it->fileDur - it->srcStart));
+            host_->modelEdited(true);
+            return;
+        }
         if (drag_.side == 'm') {
             double dur = drag_.b - drag_.a;
             it->t0 = std::clamp(drag_.a + dt, 0.0, std::max(0.0, total - dur));
@@ -550,6 +709,8 @@ void Timeline::mouseMoveEvent(QMouseEvent* e) {
         double dt = (pos.x() - drag_.x0) / pps();
         if (drag_.side == 'm') {
             a->t0 = std::max(0.0, drag_.a + dt);
+            if (std::abs(pos.y() - drag_.y0) > 8)
+                if (const int tt = targetTrack(pos.y(), true); tt && tt != pr.audioTrackOf(*a)) a->track = tt;
         } else if (drag_.side == 'l') {
             double d = std::clamp(dt, -std::min(drag_.a, drag_.c), drag_.b - 0.1);
             a->t0 = drag_.a + d;
@@ -566,6 +727,20 @@ void Timeline::mouseReleaseEvent(QMouseEvent*) {
     Project& pr = host_->pr();
     const Drag d = drag_;
     drag_.kind = Drag::None;
+    const int dropTo = dropTrack_;
+    dropTrack_ = 0;
+    if (d.kind == Drag::Reorder && d.index < pr.pieces.size() && dropTo) {
+        unsetCursor();
+        host_->moveToTrack('p', d.index, dropTo);
+        relayout();
+        return;
+    }
+    if (d.kind == Drag::ItemDrag && dropTo == kMainTrack) {
+        host_->moveToTrack('i', d.index, kMainTrack);
+        relayout();
+        return;
+    }
+    if (d.kind == Drag::ItemDrag || d.kind == Drag::AudioDrag || d.kind == Drag::CueDrag) host_->modelEdited(false);
     if (d.kind == Drag::Reorder && d.index < pr.pieces.size()) {
         const int target = reorderTarget();
         unsetCursor();
@@ -628,7 +803,228 @@ void Timeline::dropEvent(QDropEvent* e) {
     dropX_ = -1;
     update();
     const double t = std::clamp(tOf(e->position().x()), 0.0, host_->pr().total());
-    for (const QUrl& u : e->mimeData()->urls())
-        if (u.isLocalFile()) host_->insertMediaAt(u.toLocalFile(), t);
+    // auf eine Spur gezogen: dort einfügen (Video-Spur = Bild-im-Bild, Ton-Spur = Ton), sonst wie bisher
+    const QList<Row> rs = rows();
+    const int ri = rowAt(e->position().y(), rs);
+    const int track = ri >= 0 && (rs[ri].kind == Row::VTrack || rs[ri].kind == Row::ATrack) ? rs[ri].id : 0;
+    for (const QUrl& u : e->mimeData()->urls()) {
+        if (!u.isLocalFile()) continue;
+        if (track) host_->insertMediaOnTrack(u.toLocalFile(), t, track);
+        else host_->insertMediaAt(u.toLocalFile(), t);
+    }
     e->acceptProposedAction();
+}
+
+// Rechtsklick auf einen Clip: auf eine andere Spur legen
+void Timeline::contextMenuEvent(QContextMenuEvent* e) {
+    Project& pr = host_->pr();
+    const QPointF pos = e->pos();
+    char kind = 0;
+    int id = 0;
+    bool audio = false, toMain = false;
+    if (pos.y() >= RULER && pos.y() < RULER + ROW && !pr.pieces.isEmpty()) {
+        kind = 'p';
+        id = pr.locate(tOf(pos.x()), nullptr);
+        host_->selectPiece(id);
+    } else if (Item* it = itemAt(pos); it && it->media()) {
+        kind = 'i';
+        id = it->id;
+        toMain = it->kind == Item::Video;
+        host_->selectItem(id);
+    } else if (AudioClip* a = audioAt(pos)) {
+        kind = 'a';
+        id = a->id;
+        audio = true;
+        host_->selectAudio(id);
+    }
+    if (!kind) return;
+    QMenu m(this);
+    QMenu* sub = m.addMenu(T("move_to_track"));
+    const int cur = kind == 'p' ? kMainTrack : kind == 'i' ? pr.item(id)->track : pr.audioTrackOf(*pr.audio(id));
+    for (int tid : pr.trackIds(audio)) {
+        if (tid == kMainTrack && !toMain) continue;
+        QAction* act = sub->addAction(pr.trackName(tid) + (tid == kMainTrack ? "  ·  " + T("main_video") : QString()),
+                                      this, [this, kind, id, tid] { host_->moveToTrack(kind, id, tid); });
+        act->setEnabled(tid != cur);
+    }
+    sub->addSeparator();
+    sub->addAction(audio ? T("new_audio_track") : T("new_video_track"), this, [this, kind, id] { host_->moveToTrack(kind, id, -1); });
+    if (kind == 'p' && (pr.pieces.size() < 2 || std::abs(pr.pieces[id].speed - 1.0) > 1e-6 || !pr.sources.value(pr.pieces[id].src).video))
+        sub->setEnabled(false);  // letzter Abschnitt, anderes Tempo oder Tondatei: bleibt im Hauptvideo
+    m.exec(e->globalPos());
+}
+
+// ---------------------------------------------------------------- Spurköpfe
+TrackHeader::TrackHeader(EditorHost* host, Timeline* tl, QScrollArea* scroll) : host_(host), tl_(tl), scroll_(scroll) {
+    setFixedWidth(W);
+    setMouseTracking(true);
+    tl_->setHeader(this);
+    connect(scroll_->verticalScrollBar(), &QScrollBar::valueChanged, this, [this] { update(); });
+}
+
+double TrackHeader::offset() const {
+    // Zeitleiste und Köpfe stehen oben bündig: gleiche Höhe wie der Rahmen der Bildlauf-Fläche
+    return scroll_->viewport()->mapTo(scroll_, QPoint(0, 0)).y() - scroll_->verticalScrollBar()->value();
+}
+
+QList<TrackHeader::Hit> TrackHeader::hits() const {
+    QList<Hit> out;
+    const double off = offset();
+    out << Hit{0, '+', QRectF(W - 30, off + 2, 24, 22)};
+    for (const Timeline::Row& r : tl_->rows()) {
+        if (r.kind == Timeline::Row::Lane || r.kind == Timeline::Row::Subs) continue;
+        const double cy = off + r.y + (r.kind == Timeline::Row::Main ? 24 : r.h / 2);
+        out << Hit{r.id, 'n', QRectF(4, off + r.y + 1, W - 8, r.h - 2)};
+        out << Hit{r.id, 'm', QRectF(34, cy - 10, 20, 20)};
+        out << Hit{r.id, 's', QRectF(57, cy - 10, 20, 20)};
+        out << Hit{r.id, 'v', QRectF(82, cy - 5, W - 92, 10)};
+    }
+    return out;
+}
+
+TrackHeader::Hit TrackHeader::hitAt(const QPointF& p) const {
+    Hit best;
+    for (const Hit& h : hits())
+        if (h.r.adjusted(-2, -3, 2, 3).contains(p) && (best.what == 0 || best.what == 'n')) best = h;
+    return best;
+}
+
+void TrackHeader::paintEvent(QPaintEvent*) {
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
+    const Theme& th = currentTheme();
+    Project& pr = host_->pr();
+    const double off = offset();
+    QFont f = font();
+    f.setPixelSize(11);
+    f.setBold(true);
+    p.setFont(f);
+    p.save();
+    p.setClipRect(QRectF(0, scroll_->viewport()->mapTo(scroll_, QPoint(0, 0)).y(), W, scroll_->viewport()->height()));
+    bool anySolo = false;
+    for (const Track& t : pr.tracks) anySolo |= t.solo;
+    for (const Timeline::Row& r : tl_->rows()) {
+        const QRectF row(2, off + r.y + 1, W - 4, r.h - 2);
+        if (r.kind == Timeline::Row::Lane || r.kind == Timeline::Row::Subs) {
+            if (r.kind == Timeline::Row::Subs) {
+                p.setPen(th.muted);
+                p.drawText(row.adjusted(8, 0, 0, 0), Qt::AlignVCenter, T("subtitles"));
+            }
+            continue;
+        }
+        const Track* t = pr.track(r.id);
+        if (!t) continue;
+        const bool sel = host_->selTrack() == r.id;
+        p.setPen(sel ? QPen(th.accent, 1.5) : Qt::NoPen);
+        p.setBrush(sel ? mix(th.panel2, th.accent, 0.18) : th.panel2);
+        p.drawRoundedRect(row, 6, 6);
+        const double cy = off + r.y + (r.kind == Timeline::Row::Main ? 24 : r.h / 2);
+        const bool silent = t->mute || (anySolo && !t->solo);
+        p.setPen(silent ? th.muted : th.text);
+        p.drawText(QRectF(8, cy - 10, 26, 20), Qt::AlignVCenter, pr.trackName(r.id));
+        auto toggle = [&](double x, const QString& txt, bool on) {
+            const QRectF b(x, cy - 10, 20, 20);
+            p.setPen(on ? Qt::NoPen : QPen(th.border, 1));
+            p.setBrush(on ? th.accent : Qt::transparent);
+            p.drawRoundedRect(b, 4, 4);
+            p.setPen(on ? th.accentText : th.muted);
+            p.drawText(b, Qt::AlignCenter, txt);
+        };
+        toggle(34, "M", t->mute);
+        toggle(57, "S", t->solo);
+        // Lautstärke als kleiner Balken (0 … 200 %), Doppelklick = 100 %
+        const QRectF vb(82, cy - 3, W - 92, 6);
+        p.setPen(Qt::NoPen);
+        p.setBrush(th.border);
+        p.drawRoundedRect(vb, 3, 3);
+        const double frac = std::clamp(t->volume / 2.0, 0.0, 1.0);
+        p.setBrush(silent ? th.muted : th.accent);
+        p.drawRoundedRect(QRectF(vb.left(), vb.top(), std::max(6.0, vb.width() * frac), vb.height()), 3, 3);
+        p.setPen(QPen(th.text, 1));
+        p.drawLine(QPointF(vb.left() + vb.width() / 2, vb.top() - 2), QPointF(vb.left() + vb.width() / 2, vb.bottom() + 2));
+        if (r.kind == Timeline::Row::Main) {
+            QFont sf = f;
+            sf.setBold(false);
+            p.setFont(sf);
+            p.setPen(th.muted);
+            p.drawText(QRectF(8, cy + 12, W - 16, 16), Qt::AlignVCenter, T("main_video"));
+            p.drawText(QRectF(8, cy + 28, W - 16, 16), Qt::AlignVCenter, QString("%1 %").arg(qRound(t->volume * 100)));
+            p.setFont(f);
+        }
+    }
+    p.restore();
+    // "+": Spur anlegen
+    const QRectF plus(W - 30, off + 2, 24, 22);
+    if (plus.bottom() > 0) {
+        p.setPen(QPen(th.border, 1));
+        p.setBrush(th.panel2);
+        p.drawRoundedRect(plus, 5, 5);
+        p.drawPixmap(plus.adjusted(5, 4, -5, -4).toRect(), makeIcon(Ic::Plus, th.text).pixmap(28, 28));
+    }
+}
+
+void TrackHeader::mousePressEvent(QMouseEvent* e) {
+    const Hit h = hitAt(e->position());
+    Project& pr = host_->pr();
+    if (h.what == '+') {
+        QMenu m(this);
+        m.addAction(makeIcon(Ic::Layers, currentTheme().text), T("new_video_track"), this, [this] {
+            host_->pushUndo();
+            host_->selectTrack(host_->pr().addTrack(false));
+            host_->modelEdited(true);
+        });
+        m.addAction(makeIcon(Ic::Music, currentTheme().text), T("new_audio_track"), this, [this] {
+            host_->pushUndo();
+            host_->selectTrack(host_->pr().addTrack(true));
+            host_->modelEdited(true);
+        });
+        m.exec(mapToGlobal(h.r.bottomLeft().toPoint()));
+        return;
+    }
+    Track* t = pr.track(h.track);
+    if (!t) return;
+    if (h.what == 'm' || h.what == 's') {
+        host_->pushUndo();
+        (h.what == 'm' ? t->mute : t->solo) ^= true;
+        host_->tracksChanged();
+    } else if (h.what == 'v') {
+        host_->pushUndo();
+        volDrag_ = h.track;
+        mouseMoveEvent(e);
+    } else {
+        host_->selectTrack(h.track);
+    }
+    update();
+}
+
+void TrackHeader::mouseMoveEvent(QMouseEvent* e) {
+    if (volDrag_) {
+        for (const Hit& h : hits())
+            if (h.track == volDrag_ && h.what == 'v') {
+                double v = std::clamp((e->position().x() - h.r.left()) / h.r.width(), 0.0, 1.0) * 2.0;
+                if (std::abs(v - 1.0) < 0.04) v = 1.0;  // rastet bei 100 % ein
+                if (Track* t = host_->pr().track(volDrag_)) t->volume = std::round(v * 100) / 100;
+                host_->tracksChanged();
+                setToolTip(QString("%1 %").arg(qRound(host_->pr().track(volDrag_)->volume * 100)));
+            }
+        update();
+        return;
+    }
+    const Hit h = hitAt(e->position());
+    const Track* t = host_->pr().track(h.track);
+    setToolTip(h.what == 'm' ? T("track_mute") : h.what == 's' ? T("track_solo") : h.what == '+' ? T("add_track")
+               : h.what == 'v' && t ? T("volume") + QString(" %1 %").arg(qRound(t->volume * 100)) : QString());
+    setCursor(h.what && h.what != 'n' ? Qt::PointingHandCursor : Qt::ArrowCursor);
+}
+
+void TrackHeader::mouseReleaseEvent(QMouseEvent*) { volDrag_ = 0; }
+
+void TrackHeader::mouseDoubleClickEvent(QMouseEvent* e) {
+    const Hit h = hitAt(e->position());
+    if (h.what != 'v') return;
+    if (Track* t = host_->pr().track(h.track)) {
+        t->volume = 1.0;
+        host_->tracksChanged();
+        update();
+    }
 }
