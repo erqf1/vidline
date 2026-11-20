@@ -185,7 +185,9 @@ void MainWindow::tracksTest(const QString& dir) {
     const int v3 = pr_.addTrack(false);
     seek(0.5);
     insertMediaOnTrack(logo, 0.5, v3);
-    Item* lg = pr_.item(selItem_);
+    // nur die ID merken: Rückgängig baut die Listen neu auf, Zeiger darauf werden ungültig
+    const int lgId = selItem_;
+    Item* lg = pr_.item(lgId);
     c->check("Bild auf V3", lg && lg->kind == Item::Image && lg->track == v3);
     if (lg) { lg->x = 0.05; lg->y = 0.1; lg->w = 0.2; lg->h = 0.2 * 640 / 360.0; lg->opacity = 0.5; lg->t0 = 0; lg->t1 = 4; }
     const int a1 = pr_.trackIds(true).value(0);
@@ -214,9 +216,9 @@ void MainWindow::tracksTest(const QString& dir) {
     doRedo();
     c->check("Wiederholen: wieder auf A1", pr_.audio(voiceId) && pr_.audioTrackOf(*pr_.audio(voiceId)) == a1);
     doUndo();
-    c->check("Bild auf eine neue Video-Spur", moveToTrack('i', lg ? lg->id : 0, -1) && pr_.trackIds(false).size() == 4);
+    c->check("Bild auf eine neue Video-Spur", moveToTrack('i', lgId, -1) && pr_.trackIds(false).size() == 4);
     doUndo();
-    lg = pr_.item(lg ? lg->id : 0);
+    lg = pr_.item(lgId);
     c->check("Rückgängig: Bild wieder auf V3, Spur weg", lg && lg->track == v3 && pr_.trackIds(false).size() == 3);
     // Abschnitt aufs Overlay und zurück ins Hauptvideo
     seek(2.0);
@@ -229,7 +231,8 @@ void MainWindow::tracksTest(const QString& dir) {
     c->check("…als Video mit gleicher Quelle und Startpunkt", moved && moved->kind == Item::Video && near(moved->srcStart, 2.0, 0.05) &&
                                                                moved->track == v2,
              moved ? QString::number(moved->srcStart) : QString());
-    if (moved) moveToTrack('i', moved->id, kMainTrack);
+    const int movedId = moved ? moved->id : 0;
+    if (movedId) moveToTrack('i', movedId, kMainTrack);
     c->check("Zurück ins Hauptvideo", pr_.pieces.size() == 2 && near(pr_.total(), 4.0, 0.05), QString::number(pr_.total()));
     doUndo();
     doUndo();
