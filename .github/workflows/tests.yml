@@ -20,6 +20,7 @@ jobs:
           - os: windows-latest
           - os: macos-15
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Abhängigkeiten (Linux)
@@ -82,7 +83,7 @@ jobs:
               W() { cygpath -w "$1"; }
               pwsh -NoProfile -Command "\$env:VIDLINE_SETTINGS='$(W "$S")'; \$env:VIDLINE_DATA='$(W "$PWD/test-out/data-$t")'; \$p = Start-Process -FilePath '$(W "$APP")' -ArgumentList '--$t','$(W "$PWD/test-out")' -Wait -PassThru; exit \$p.ExitCode" || fail=1
             else
-              VIDLINE_SETTINGS="$S" VIDLINE_DATA="$PWD/test-out/data-$t" timeout 1500 "$APP" --$t "$PWD/test-out" || fail=1
+              VIDLINE_SETTINGS="$S" VIDLINE_DATA="$PWD/test-out/data-$t" "$APP" --$t "$PWD/test-out" || fail=1
             fi
             cat test-out/*-ergebnis.txt 2>/dev/null | grep -E "^FEHL|Prüfungen" || true
             echo "::endgroup::"

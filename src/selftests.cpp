@@ -435,7 +435,7 @@ void MainWindow::presetTest(const QString& dir) {
     // Dialog: Vorschau der Zielgröße und Dateigröße, Bilder
     {
         ExportDialog dlg(this, pr_.vw, pr_.vh, 30, pr_.sources[0].path);
-        dlg.setEstimateInputs(pr_.total(), pr_.sources[0].duration, pr_.natW, pr_.natH, true);
+        dlg.setEstimateInputs(48, 48, pr_.natW, pr_.natH, true);  // wie ein typischer Clip (für das Bild)
         dlg.selectPreset("discord10");
         // keine echten Pfade in den Bildern
         const auto edits = dlg.findChildren<QLineEdit*>();

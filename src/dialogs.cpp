@@ -452,7 +452,7 @@ ShortcutDialog::ShortcutDialog(QWidget* parent) : QDialog(parent) {
 ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, const QString& sourcePath)
     : QDialog(parent), srcW_(srcW), srcH_(srcH), srcFps_(srcFps > 1 ? srcFps : 30.0), source_(sourcePath) {
     setWindowTitle(T("export"));
-    setMinimumWidth(420);
+    setMinimumWidth(480);
     auto* v = new QVBoxLayout(this);
     v->setContentsMargins(20, 20, 20, 20);
     v->setSpacing(12);
@@ -830,10 +830,11 @@ void ExportDialog::updateEstimate() {
         // Ziel-Dateigröße: feste Bitrate in zwei Durchgängen, die Größe ist fast genau vorher bekannt
         const double bytes = outDur_ * (o.videoKbps + (hasAudio_ ? o.audioKbps : 0)) * 1000.0 / 8.0 * 1.01;
         const ExportPreset* p = currentPreset();
-        QString extra = "\n" + T("pr_size_target").arg(fmtMB(p ? p->maxMB * 1e6 : bytes)).arg(o.videoKbps);
+        QString info = T("pr_size_target").arg(fmtMB(p ? p->maxMB * 1e6 : bytes)).arg(o.videoKbps);
         if (p && outDur_ > 0 && sizeTargetVideoKbps(p->maxMB * 1e6, outDur_, hasAudio_ ? o.audioKbps : 0) < 100)
-            extra += "\n" + T("pr_too_long");
-        showSize(bytes * 8, extra);
+            info += "\n" + T("pr_too_long");
+        if (target_) target_->setText(info + "\n" + target_->text());
+        showSize(bytes * 8);
         return;
     }
     if (o.format == "wav") {

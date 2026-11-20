@@ -1,0 +1,41 @@
+<!-- Vidline 1.17.0 – Eintrag für mert.win/vid/changelog.html (oben über 1.16.0 einfügen).
+     Klassen/Struktur bei Bedarf an die vorhandenen Einträge angleichen. -->
+<article class="release" id="v1.17.0">
+  <h2>1.17.0 <time datetime="2026-11-20">20. November 2026</time></h2>
+
+  <h3>Automatische Untertitel (neues Plugin)</h3>
+  <ul>
+    <li>Einstellungen → Plugins → <strong>Untertitel</strong> installieren, dann im Editor <em>Untertitel → Untertitel automatisch erzeugen</em>.</li>
+    <li>Die Sprache wird komplett auf dem eigenen Rechner erkannt (whisper.cpp), nichts wird hochgeladen. Programm und Sprachmodell werden erst beim ersten Benutzen geladen, mit Fortschritt.</li>
+    <li>Modelle zur Wahl: Tiny, Base, Small, Turbo und Medium. Sprache automatisch erkennen oder selbst wählen, auf Wunsch ins Englische übersetzen.</li>
+    <li>Die Untertitel liegen als eigene Spur in der Zeitleiste: Text und Zeiten bearbeiten, verschieben, kürzen, teilen, löschen, neue hinzufügen.</li>
+    <li>Aussehen für alle Untertitel: Schrift, Größe, Position (unten, Mitte, oben), Rand, Hintergrund-Kasten oder Schatten, Farben.</li>
+    <li>Export als SRT oder VTT, als Untertitelspur in MP4/MOV/MKV oder ins Bild eingebrannt. SRT/VTT lassen sich auch importieren.</li>
+  </ul>
+
+  <h3>Mehrere Spuren</h3>
+  <ul>
+    <li>Video- und Bild-Spuren übereinander: Bild-im-Bild und Overlays mit Position, Größe und Deckkraft. Höhere Spuren liegen oben.</li>
+    <li>Mehrere Ton-Spuren für Musik, Sprache und Geräusche. Jede Spur hat Lautstärke, Stumm (M) und Solo (S) – direkt am Spurkopf.</li>
+    <li>Clips per Ziehen oder Rechtsklick auf eine andere Spur legen, auch vom Hauptvideo auf eine Overlay-Spur und zurück.</li>
+    <li>Rechtsklick im Medien-Panel: „Als Bild-im-Bild“ oder „Auf eine neue Ton-Spur“.</li>
+    <li>Der Export mischt Bild und Ton aller Spuren. Bestehende Bearbeitungen verhalten sich genau wie vorher.</li>
+  </ul>
+
+  <h3>Export-Vorlagen</h3>
+  <ul>
+    <li>TikTok, Reels, Shorts (9:16, 1080 × 1920) mit schwarzem Rand, Zuschnitt oder unscharfem Rand.</li>
+    <li>YouTube 1080p und 4K, Instagram 1:1, GIF.</li>
+    <li>Discord unter 10 MB und unter 50 MB: die Bitrate wird aus der Länge berechnet, kodiert wird in zwei Durchgängen. Bei langen Videos wird die Auflösung passend verkleinert.</li>
+    <li>Eigene Vorlagen speichern und löschen.</li>
+    <li>Vorschau der Zielgröße als Rahmen, dazu Auflösung, Bildrate und ungefähre Dateigröße.</li>
+  </ul>
+
+  <h3>Außerdem</h3>
+  <ul>
+    <li>Musikbibliothek: Ein Klick auf einen Song spielt ihn (vorher Doppelklick). Mit Strg/Umschalt werden weiterhin mehrere ausgewählt.</li>
+    <li>Rückgängig stellt jetzt immer den vorherigen Stand her – vorher konnten einzelne Änderungen an Clips (z. B. Zeiten eines Ton-Clips) das Rückgängigmachen überleben.</li>
+    <li>Die Eigenschaften werden nicht mehr breiter als ihr Bereich (lange Beschriftungen schnitten Felder ab).</li>
+    <li>Unschärfe-Bereiche sind in der Zeitleiste jetzt grau-blau statt orange.</li>
+  </ul>
+</article>
