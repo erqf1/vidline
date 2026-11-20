@@ -652,14 +652,12 @@ void MainWindow::subtitleTest(const QString& dir, bool online) {
     selectSub(0);
     pause(800);
     grab().save(QDir(dir).filePath("untertitel-editor.png"));
-    if (qEnvironmentVariableIsSet("VIDLINE_DEBUG_INSP"))
-        for (int i = 0; i < insp_->count(); ++i) {
-            QWidget* pg = insp_->widget(i);
-            QString wide;
-            for (QWidget* w : pg->findChildren<QWidget*>())
-                if (w->minimumSizeHint().width() > 200) wide += QString("%1:%2 ").arg(w->metaObject()->className()).arg(w->minimumSizeHint().width());
-            c->note(QString("Seite %1: %2 px, Bereich %3 px – %4").arg(i).arg(pg->minimumSizeHint().width()).arg(insp_->width()).arg(wide));
-        }
+    // Eigenschaften passen in ihren Bereich (lange Beschriftungen machten sie früher breiter)
+    {
+        int widest = 0;
+        for (int i = 0; i < insp_->count(); ++i) widest = std::max(widest, insp_->widget(i)->minimumSizeHint().width());
+        c->check("Eigenschaften nicht breiter als ihr Bereich", widest <= insp_->width(), QString("%1 / %2 px").arg(widest).arg(insp_->width()));
+    }
     inspCard_->grab().save(QDir(dir).filePath("untertitel-eigenschaften.png"));
     {
         SubtitleDialog dlg(pr_, this);
