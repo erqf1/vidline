@@ -33,7 +33,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "openwith"; Description: "Show Vidline in the ""Open with"" menu of video files (recommended)"; GroupDescription: "Video player:"
-Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
+; Desktop-Symbol nur bei der Erst-Installation anbieten (Updates fassen es nicht an)
+Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked; Check: IsFirstInstall
 
 [Files]
 Source: "..\..\dist\Vidline\*"; DestDir: "{app}"; Excludes: "Cutline.exe"; Flags: recursesubdirs ignoreversion
@@ -46,7 +47,7 @@ Type: files; Name: "{autodesktop}\Cutline.lnk"
 
 [Icons]
 Name: "{autoprograms}\Vidline"; Filename: "{app}\Vidline.exe"; AppUserModelID: "WSoftware.Cutline"
-Name: "{autodesktop}\Vidline"; Filename: "{app}\Vidline.exe"; AppUserModelID: "WSoftware.Cutline"; Tasks: desktopicon
+Name: "{autodesktop}\Vidline"; Filename: "{app}\Vidline.exe"; AppUserModelID: "WSoftware.Cutline"; Tasks: desktopicon; Check: IsFirstInstall
 
 [Run]
 Filename: "{app}\Vidline.exe"; Description: "Start Vidline"; Flags: nowait postinstall skipifsilent
@@ -70,4 +71,24 @@ Root: HKA; Subkey: "Software\Classes\Applications\Cutline.exe"; ValueType: strin
 function WasCutline: Boolean;
 begin
   Result := FileExists(ExpandConstant('{app}\Cutline.exe'));
+end;
+
+var
+  FirstInstall: Boolean;
+
+// Desktop-Symbol nur bei der Erst-Installation: Inno Setup trägt sich unter HKLM (alle Benutzer) oder HKCU
+// (nur ich) ein. Gibt es den Eintrag schon, ist es ein Update (auch still über den eingebauten Updater) -
+// dann bleibt das Symbol, wie es ist: kein neues Anlegen, kein Springen, gelöscht bleibt gelöscht.
+function InitializeSetup(): Boolean;
+var
+  Key: String;
+begin
+  Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{B7D0C3E2-5A41-4C7E-9B61-3F2A8E6D1C90}}_is1';
+  FirstInstall := not (RegKeyExists(HKLM64, Key) or RegKeyExists(HKLM32, Key) or RegKeyExists(HKCU, Key));
+  Result := True;
+end;
+
+function IsFirstInstall(): Boolean;
+begin
+  Result := FirstInstall;
 end;
