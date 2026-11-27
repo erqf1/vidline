@@ -33,7 +33,7 @@
 #include <cmath>
 #include "model.h"
 #include "i18n.h"
-#include "music.h"
+#include "plugins.h"
 
 // ---------------------------------------------------------------- reine Helfer (ohne Netz testbar)
 QString vdlSize(qint64 b) {
@@ -435,7 +435,7 @@ QStringList VideoDownloadDialog::finishedFiles() const {
 }
 void VideoDownloadDialog::setStatus(const QString& s) { status_->setText(s); }
 
-// yt-dlp einmalig von GitHub laden, danach höchstens alle 7 Tage aktualisieren (gleiche Datei wie das Musik-Plugin)
+// yt-dlp einmalig von GitHub laden, danach höchstens alle 7 Tage aktualisieren (gleiche Datei wie früher das Musik-Plugin)
 void VideoDownloadDialog::ensureYtDlp(std::function<void(bool, QString)> done) {
     const QString exe = ytDlpPath();
     if (QFileInfo(exe).size() > 1000000) {

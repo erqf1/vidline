@@ -19,6 +19,7 @@
 #include "i18n.h"
 #include "icons.h"
 #include "mainwindow.h"
+#include "plugins.h"
 #include "defaultapps.h"
 #include <QLabel>
 #include "textrender.h"
@@ -126,14 +127,14 @@ int main(int argc, char* argv[]) {
     if (!app.pending.isEmpty()) w.openFile(app.pending);
     // Argumente als Unicode lesen (Dateien aus "Oeffnen mit" koennen Sonderzeichen enthalten)
     const QStringList args = app.arguments();
+    // Musik ist seit 1.18.0 die eigene App Tuneline: einmal Bescheid sagen (nicht bei Entwickler-Tests)
+    if (!args.join(' ').contains("--")) QTimer::singleShot(1500, &w, [&w] { showTunelineHint(&w); });
     if (args.size() > 1 && !args[1].startsWith("--"))
         QTimer::singleShot(0, &w, [&w, path = args[1]] { w.openFile(path); });
     if (args.size() > 3 && args[2] == "--shots") w.selfShots(args[3]);
     if (args.size() > 3 && args[2] == "--aspectshots") w.aspectShots(args[3]);
     if (args.size() > 3 && args[2] == "--fsshots") w.fsShots(args[3]);
     if (args.size() > 3 && args[2] == "--tagshots") w.tagShots(args[3]);
-    if (args.size() > 2 && args[1] == "--musicshots") w.musicShots(args[2]);
-    if (args.size() > 3 && args[1] == "--dlshots") w.downloadShots(args[2], args[3]);
     if (args.size() > 2 && args[1] == "--voltest") QTimer::singleShot(300, &w, [&w, d = args[2]] { w.volumeTest(d); });
     if (args.size() > 2 && args[1] == "--vdltest") QTimer::singleShot(300, &w, [&w, d = args[2], u = args.value(3)] { w.videoDownloadTest(d, u); });
     // Entwickler-Tests 1.17: Spuren, Export-Vorlagen, Untertitel (Exit-Code 1 bei Fehlern)

@@ -5,7 +5,8 @@
 #include "icons.h"
 
 // Plugins: Zusatzfunktionen, die man in den Einstellungen dazuholt. Der Code steckt in Vidline, das Plugin schaltet
-// ihn frei; was es zusätzlich braucht (beim Musik-Plugin yt-dlp), lädt es erst, wenn man es benutzt.
+// ihn frei; was es zusätzlich braucht (beim Video-Download yt-dlp, bei Untertiteln Whisper), lädt es erst, wenn man es benutzt.
+// Das frühere Musik-Plugin ist seit 1.18.0 ein eigenes Programm: Tuneline.
 struct PluginInfo {
     const char* id;
     const char* nameKey;
@@ -16,6 +17,12 @@ struct PluginInfo {
 const QList<PluginInfo>& plugins();
 bool pluginEnabled(const char* id);
 void setPluginEnabled(const char* id, bool on);
+
+QString pluginDataDir();  // Datenordner der Plugins (VIDLINE_DATA für Tests)
+QString ytDlpPath();      // yt-dlp für den Video-Download
+
+// Wer das alte Musik-Plugin an hatte, bekommt einmal den Hinweis auf Tuneline (und die Musik bleibt dort erhalten)
+void showTunelineHint(QWidget* parent);
 
 class QVBoxLayout;
 

@@ -30,7 +30,7 @@
 #include <cmath>
 #include "i18n.h"
 #include "icons.h"
-#include "music.h"
+#include "plugins.h"
 #include "textrender.h"
 #include "theme.h"
 
@@ -259,7 +259,7 @@ const QList<WhisperModel>& whisperModels() {
     return m;
 }
 
-QString whisperDir() { return musicDataDir() + "/plugins/whisper"; }
+QString whisperDir() { return pluginDataDir() + "/plugins/whisper"; }
 
 QString whisperExe() {
     const QString env = qEnvironmentVariable("VIDLINE_WHISPER_BIN");

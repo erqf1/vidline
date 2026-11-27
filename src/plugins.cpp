@@ -1,17 +1,20 @@
 #include "plugins.h"
 
+#include <QDesktopServices>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
+#include <QStandardPaths>
+#include <QUrl>
 #include <QVBoxLayout>
 #include "i18n.h"
 #include "theme.h"
 
 const QList<PluginInfo>& plugins() {
     static const QList<PluginInfo> list = {
-        {"music", "plugin_music", "plugin_music_desc", Ic::Music},
         {"videodl", "plugin_videodl", "plugin_videodl_desc", Ic::Download},
         {"subtitles", "plugin_subs", "plugin_subs_desc", Ic::Subtitles},
     };
@@ -21,6 +24,37 @@ const QList<PluginInfo>& plugins() {
 bool pluginEnabled(const char* id) { return QSettings().value(QString("plugins/") + id, false).toBool(); }
 
 void setPluginEnabled(const char* id, bool on) { QSettings().setValue(QString("plugins/") + id, on); }
+
+QString pluginDataDir() {
+    QString d = qEnvironmentVariable("VIDLINE_DATA");
+    if (d.isEmpty()) d = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    return d;
+}
+
+QString ytDlpPath() {
+#ifdef Q_OS_WIN
+    return pluginDataDir() + "/plugins/yt-dlp.exe";
+#else
+    return pluginDataDir() + "/plugins/yt-dlp";
+#endif
+}
+
+void showTunelineHint(QWidget* parent) {
+    QSettings st;
+    if (!st.value("plugins/music", false).toBool() || st.value("tuneline/hinted", false).toBool()) return;
+    st.setValue("tuneline/hinted", true);
+    st.setValue("plugins/music", false);
+    QMessageBox box(parent);
+    box.setWindowTitle(T("tune_title"));
+    box.setIcon(QMessageBox::Information);
+    box.setText(T("tune_title"));
+    box.setInformativeText(T("tune_text"));
+    QPushButton* get = box.addButton(T("tune_get"), QMessageBox::AcceptRole);
+    box.addButton(T("ok"), QMessageBox::RejectRole);
+    box.setDefaultButton(get);
+    box.exec();
+    if (box.clickedButton() == get) QDesktopServices::openUrl(QUrl("https://mert.win/tune/"));
+}
 
 PluginDialog::PluginDialog(QWidget* parent) : QDialog(parent) {
     setWindowTitle(T("plugins"));

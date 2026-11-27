@@ -74,8 +74,6 @@ public:
     void aspectShots(const QString& dir);  // Entwickler-Test: Bildformat umstellen, rendern, exportieren
     void tagShots(const QString& dir);     // Entwickler-Test: Tags lesen und schreiben
     void fsShots(const QString& dir);      // Entwickler-Test: Vollbild-Steuerung ein-/ausblenden
-    void musicShots(const QString& dir);   // Entwickler-Test: Musik-Plugin mit selbst erzeugten Songs
-    void downloadShots(const QString& dir, const QString& url);  // Entwickler-Test: Download per Link
     void volumeTest(const QString& dir);                          // Entwickler-Test: Lautstärkeregler
     void videoDownloadTest(const QString& dir, const QString& url);  // Entwickler-Test: Video-Download-Plugin
     // Lautstärke für alles (Video, Musik, Ton-Clips). Wird nicht gespeichert: jeder Start beginnt bei 100 %.
@@ -279,16 +277,6 @@ private:
     bool subUndo_ = false;
     // Musik-Plugin: Warteschlange und Bibliothek links
     void openPlugins();
-    void playList(const QStringList& paths, int index);
-    void playAt(int pos);
-    void nextTrack(bool manual);
-    void prevTrack();
-    void queueInsert(const QStringList& paths, bool next);
-    void shuffleOrder(int keepFirst);
-    void setShuffle(bool on);
-    void setRepeat(int mode);
-    void updateQueueButtons();
-    void trackEnded();
 
     Project pr_;
     double t_ = 0;
@@ -417,14 +405,5 @@ private:
     QProcess* exportProc_ = nullptr;
     Updater* updater_ = nullptr;
     // Musik-Plugin
-    class MusicLibrary* lib_ = nullptr;
-    class MusicPanel* musicPanel_ = nullptr;
-    QSplitter* musicSplit_ = nullptr;
-    QPushButton *btnLib_ = nullptr, *btnPrev_ = nullptr, *btnNext_ = nullptr, *btnShuffle_ = nullptr, *btnRepeat_ = nullptr;
-    QStringList queue_;        // Songs der Warteschlange
-    std::vector<int> order_;   // Abspielreihenfolge (Indizes in queue_), bei Zufall gemischt
-    int queuePos_ = -1;        // Stelle in order_
-    int repeat_ = 0;           // 0 aus, 1 alle, 2 ein Titel
-    bool autoPlay_ = false, fromQueue_ = false, endPending_ = false;
     int opened_ = 0;           // zählt geöffnete Dateien (Tests)
 };
