@@ -1,6 +1,9 @@
-**Vidline 1.17.1**
+**Vidline 1.18.0**
 
-- **Desktop-Symbol bleibt an seinem Platz**: Updates legen es nicht mehr neu an und verschieben es nicht. Wer es gelöscht hat, bekommt es nicht zurück. Angeboten wird es nur bei der ersten Installation.
+- **Musik ist jetzt Tuneline**: Das Musik-Plugin (Bibliothek, Playlists, Warteschlange, Download per Link) ist zu einer eigenen App geworden – mit Equalizer, Überblenden, Visualizer und mehr: https://mert.win/tune/
+- Beim ersten Start übernimmt Tuneline deine Bibliothek, Cover und Playlists aus Vidline automatisch.
+- Wer das Plugin an hatte, bekommt in Vidline einmal einen Hinweis mit Link zu Tuneline.
+- Musik abspielen geht in Vidline weiter wie bisher – mit verschwommenem Cover und Tag-Editor.
 
 Alle Änderungen: https://mert.win/vid/changelog.html
 
