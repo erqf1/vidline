@@ -9,7 +9,7 @@
 static QList<Theme> makeThemes() {
     auto mk = [](const char* id, const char* name, const char* bg, const char* panel, const char* panel2,
                  const char* border, const char* text, const char* muted, const char* accent, const char* acctext,
-                 const char* tl, const char* video, const char* font = "'Segoe UI','SF Pro Text','Helvetica Neue','Ubuntu','Noto Sans','DejaVu Sans',sans-serif", int px = 13, int r = 8,
+                 const char* tl, const char* video, const char* font = "'Segoe UI','SF Pro Text','Helvetica Neue','Ubuntu','Noto Sans','DejaVu Sans',sans-serif", int px = 13, int r = 6,
                  bool xp = false) {
         Theme t;
         t.id = id; t.name = name;
@@ -19,11 +19,11 @@ static QList<Theme> makeThemes() {
         t.fontPx = px; t.radius = r; t.xp = xp;
         return t;
     };
-    // Minimal: ruhige neutrale Grautöne, runde Knöpfe ohne Rahmen, keine knallige Farbe (Akzent frei wählbar)
+    // Minimal: ruhige neutrale Grautöne, Knöpfe ohne Rahmen, keine knallige Farbe (Akzent frei wählbar)
     auto minimal = [&](const char* id, const char* name, const char* bg, const char* panel, const char* panel2,
                        const char* border, const char* text, const char* muted, const char* accent, const char* acctext,
                        const char* tl, const char* hover) {
-        Theme t = mk(id, name, bg, panel, panel2, border, text, muted, accent, acctext, tl, "#000000", nullptr, 13, 12);
+        Theme t = mk(id, name, bg, panel, panel2, border, text, muted, accent, acctext, tl, "#000000", nullptr, 13, 10);
         t.hover = QColor(hover);
         t.yt = true;
         return t;
@@ -43,10 +43,10 @@ static QList<Theme> makeThemes() {
            "#0a0c11", "#000000"),
         // Studio: schlicht, dunkelgrau mit Türkis – wie bekannte Schnittprogramme
         mk("studio", "Studio", "#161616", "#202020", "#2a2a2a", "#333333", "#e8e8e8", "#8c8c8c", "#1fc8d4", "#062326",
-           "#1a1a1a", "#000000", nullptr, 12, 6),
+           "#1a1a1a", "#000000", nullptr, 12, 4),
         mk("ocean", "Ocean", "#0a101d", "#101a2e", "#16233c", "#263557", "#e3ecff", "#8fa3c7", "#4aa3ff", "#04101f",
            "#08101c", "#000000"),
-        mk("violet", "Violett", "#100c1b", "#181227", "#221a36", "#392c59", "#efe9ff", "#9d8fc0", "#a78bfa", "#140a2e",
+        mk("violet", "Violett", "#100c1b", "#181227", "#221a36", "#392c59", "#efe9ff", "#9d8fc0", "#a28cf0", "#140a2e",
            "#0c0916", "#000000"),
         mk("sunset", "Sunset", "#17100e", "#221815", "#2d211c", "#493429", "#fbeee6", "#b59a8a", "#ff8a4c", "#2a1204",
            "#120c0a", "#000000"),
@@ -56,10 +56,10 @@ static QList<Theme> makeThemes() {
                 "#111111", "#141414", "#383838"),
         minimal("minimal_light", "Minimal hell / light", "#fafafa", "#ffffff", "#f0f0f0", "#e4e4e4", "#161616", "#6b6b6b",
                 "#161616", "#ffffff", "#f0f0f0", "#e4e4e4"),
-        acryl("acryl", "Acryl", "#1e2124", "#25292d", "#2f3438", "#3d4348", "#eff1f3", "#aab0b6", "#2dd4bf", "#06231f",
+        acryl("acryl", "Acryl", "#1e2124", "#25292d", "#2f3438", "#3d4348", "#eff1f3", "#aab0b6", "#3cc4b2", "#06231f",
               "#1b1e21", "#3b4146"),
         acryl("acryl_light", "Acryl hell / light", "#e8ebed", "#f5f6f7", "#ffffff", "#ccd1d6", "#15191c", "#596269",
-              "#0d9488", "#ffffff", "#e2e5e8", "#d8dde1"),
+              "#14877d", "#ffffff", "#e2e5e8", "#d8dde1"),
         mk("xp", "Windows XP", "#ECE9D8", "#F7F6EE", "#FFFFFF", "#7F9DB9", "#000000", "#4d4d4d", "#316AC5", "#FFFFFF",
            "#FFFFFF", "#000000", "'Tahoma','Verdana','DejaVu Sans',sans-serif", 12, 3, true),
         mk("terminal", "Terminal", "#0C0C0C", "#121212", "#1A1A1A", "#3A3A3A", "#CCCCCC", "#767676", "#F2F2F2", "#0C0C0C",
@@ -109,8 +109,8 @@ QString accentColor() { return g_accent; }
 
 const QList<QColor>& accentChoices() {
     static const QList<QColor> c = {QColor("#4ade9b"), QColor("#ff4d6d"), QColor("#ff7a3d"), QColor("#f5b400"),
-                                    QColor("#22c55e"), QColor("#14b8a6"), QColor("#3ea6ff"), QColor("#8b5cf6"),
-                                    QColor("#ec4899")};
+                                    QColor("#3faa5c"), QColor("#1ea596"), QColor("#3ea6ff"), QColor("#8a6ad6"),
+                                    QColor("#d6538f")};
     return c;
 }
 
@@ -248,9 +248,9 @@ QSplitter::handle { background: transparent; }
 QSplitter::handle:hover { background: @accent@; border-radius: 2px; }
 )";
     if (t.yt) {
-        // Minimal: runde Knöpfe ohne Rahmen, ausgewählt = Textfarbe als Fläche
+        // Minimal: Knöpfe ohne Rahmen (eckig-abgerundet, keine Pillen), ausgewählt = Textfarbe als Fläche
         s += R"(
-QPushButton { background: @panel2@; border: none; border-radius: 18px; padding: 8px 16px; font-weight: 500; }
+QPushButton { background: @panel2@; border: none; border-radius: 6px; padding: 8px 14px; font-weight: 500; }
 QPushButton:hover { background: @hover@; }
 QPushButton:pressed { background: @border@; }
 QPushButton:checked { background: @text@; color: @bg@; }
@@ -261,24 +261,24 @@ QPushButton#play { border: none; border-radius: 20px; background: @accent@; }
 QPushButton#play:hover { background: @accent2@; }
 QPushButton#tool { padding: 7px 14px; }
 QPushButton::menu-indicator { width: 0; image: none; }
-QFrame#card { background: @panel@; border: none; border-radius: 12px; }
+QFrame#card { background: @panel@; border: none; border-radius: 10px; }
 QDoubleSpinBox, QSpinBox, QComboBox, QLineEdit, QPlainTextEdit { background: @bg@; border: 1px solid @border@;
-    border-radius: 8px; padding: 6px 10px; }
+    border-radius: 6px; padding: 6px 10px; }
 QDoubleSpinBox:focus, QSpinBox:focus, QLineEdit:focus, QPlainTextEdit:focus { border-color: @muted@; }
-QComboBox QAbstractItemView { background: @panel@; border: none; border-radius: 12px; padding: 6px;
+QComboBox QAbstractItemView { background: @panel@; border: none; border-radius: 10px; padding: 6px;
     selection-background-color: @hover@; selection-color: @text@; }
 QListWidget { background: transparent; border: none; padding: 0; }
-QListWidget::item { border-radius: 8px; }
+QListWidget::item { border-radius: 6px; }
 QListWidget::item:hover { background: @panel2@; }
 QListWidget::item:selected { background: @hover@; color: @text@; }
-QGraphicsView { border-radius: 12px; }
-QScrollArea { border: none; border-radius: 12px; background: @tl@; }
+QGraphicsView { border-radius: 10px; }
+QScrollArea { border: none; border-radius: 10px; background: @tl@; }
 QScrollBar::handle:horizontal, QScrollBar::handle:vertical { background: @hover@; }
 QSlider::groove:horizontal { height: 4px; background: @border@; border-radius: 2px; }
 QSlider::sub-page:horizontal { background: @accent@; border-radius: 2px; }
 QSlider::handle:horizontal { width: 13px; height: 13px; margin: -5px 0; background: @accent@; border-radius: 6px; }
 QToolTip { background: @panel2@; color: @text@; border: none; border-radius: 6px; padding: 6px 8px; }
-QMenu { background: @panel@; border: 1px solid @border@; border-radius: 12px; padding: 8px 0; }
+QMenu { background: @panel@; border: 1px solid @border@; border-radius: 10px; padding: 6px 0; }
 QMenu::item { padding: 8px 36px 8px 16px; color: @text@; }
 QMenu::item:selected { background: @hover@; }
 QCheckBox::indicator { width: 16px; height: 16px; border: 2px solid @muted@; border-radius: 3px; background: transparent; }
@@ -291,8 +291,8 @@ QProgressBar { border: none; background: @panel2@; border-radius: 3px; }
         s += R"(
 QMainWindow, QDialog { background: @bg@; border-image: url(@smoke@) 0 0 0 0 stretch stretch; }
 QWidget#root { background: transparent; }
-QFrame#card { background: @glass@; border: 1px solid @edge@; border-radius: 12px; }
-QPushButton { background: @glass2@; border: 1px solid @edge@; border-radius: 9px; padding: 7px 12px; }
+QFrame#card { background: @glass@; border: 1px solid @edge@; border-radius: 10px; }
+QPushButton { background: @glass2@; border: 1px solid @edge@; border-radius: 6px; padding: 7px 12px; }
 QPushButton:hover { background: @glass3@; border-color: @edge@; }
 QPushButton:pressed { background: @glass@; }
 QPushButton:checked { background: @accent@; color: @acctext@; border-color: @accent@; }
@@ -302,14 +302,14 @@ QPushButton#play { border: none; border-radius: 20px; background: @accent@; }
 QPushButton#play:hover { background: @accent2@; }
 QPushButton#paneHeader { background: transparent; border: none; padding: 2px 0; }
 QPushButton::menu-indicator { width: 0; image: none; }
-QDoubleSpinBox, QSpinBox, QComboBox, QLineEdit, QPlainTextEdit { background: @well@; border: 1px solid @edge@; border-radius: 8px; padding: 6px 9px; }
+QDoubleSpinBox, QSpinBox, QComboBox, QLineEdit, QPlainTextEdit { background: @well@; border: 1px solid @edge@; border-radius: 6px; padding: 6px 9px; }
 QDoubleSpinBox:focus, QSpinBox:focus, QLineEdit:focus, QPlainTextEdit:focus { border-color: @accent@; }
 QComboBox QAbstractItemView { background: @panel@; border: 1px solid @border@; selection-background-color: @hover@; selection-color: @text@; }
 QListWidget { background: @well@; border: 1px solid @edge@; border-radius: 10px; }
 QListWidget::item:hover { background: @glass2@; }
 QListWidget::item:selected { background: @glass3@; color: @text@; }
-QGraphicsView { border-radius: 12px; }
-QScrollArea { border: 1px solid @edge@; border-radius: 12px; background: @well@; }
+QGraphicsView { border-radius: 10px; }
+QScrollArea { border: 1px solid @edge@; border-radius: 10px; background: @well@; }
 QScrollArea > QWidget > QWidget { background: transparent; }
 QScrollBar::handle:horizontal, QScrollBar::handle:vertical { background: @glass3@; }
 QSlider::groove:horizontal { height: 4px; background: @edge@; border-radius: 2px; }

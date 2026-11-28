@@ -138,6 +138,7 @@ int main(int argc, char* argv[]) {
     if (args.size() > 2 && args[1] == "--voltest") QTimer::singleShot(300, &w, [&w, d = args[2]] { w.volumeTest(d); });
     if (args.size() > 2 && args[1] == "--vdltest") QTimer::singleShot(300, &w, [&w, d = args[2], u = args.value(3)] { w.videoDownloadTest(d, u); });
     // Entwickler-Tests 1.17: Spuren, Export-Vorlagen, Untertitel (Exit-Code 1 bei Fehlern)
+    if (args.size() > 2 && args[1] == "--lookshots") QTimer::singleShot(300, &w, [&w, d = args[2]] { w.lookShots(d); });
     if (args.size() > 2 && args[1] == "--trackstest") QTimer::singleShot(300, &w, [&w, d = args[2]] { w.tracksTest(d); });
     if (args.size() > 2 && args[1] == "--presettest") QTimer::singleShot(300, &w, [&w, d = args[2]] { w.presetTest(d); });
     if (args.size() > 2 && args[1] == "--subtest")

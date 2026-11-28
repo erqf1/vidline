@@ -1,9 +1,8 @@
-**Vidline 1.18.0**
+**Vidline 1.18.1**
 
-- **Musik ist jetzt Tuneline**: Das Musik-Plugin (Bibliothek, Playlists, Warteschlange, Download per Link) ist zu einer eigenen App geworden – mit Equalizer, Überblenden, Visualizer und mehr: https://mert.win/tune/
-- Beim ersten Start übernimmt Tuneline deine Bibliothek, Cover und Playlists aus Vidline automatisch.
-- Wer das Plugin an hatte, bekommt in Vidline einmal einen Hinweis mit Link zu Tuneline.
-- Musik abspielen geht in Vidline weiter wie bisher – mit verschwommenem Cover und Tag-Editor.
+- Ruhigere Oberfläche: Knöpfe im Design Minimal sind nicht mehr rund wie Pillen, einheitliche, kleinere Ecken in allen Designs.
+- Musik ohne Cover: schlichte dunkle Fläche statt bunter Farbflecken.
+- Akzentfarben zur Auswahl leicht angepasst (weniger grell).
 
 Alle Änderungen: https://mert.win/vid/changelog.html
 

@@ -119,6 +119,7 @@ public:
     // Entwickler-Tests für 1.17 (unsichtbar, Ergebnis in <ordner>/…-ergebnis.txt, Exit-Code 1 bei Fehlern)
     void subtitleTest(const QString& dir, bool online);
     void tracksTest(const QString& dir);
+    void lookShots(const QString& dir);
     void presetTest(const QString& dir);
 
 protected:

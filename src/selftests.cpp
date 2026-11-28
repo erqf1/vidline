@@ -16,6 +16,7 @@
 #include <QTemporaryDir>
 #include <QTimer>
 #include "dialogs.h"
+#include "theme.h"
 #include "i18n.h"
 #include "mainwindow.h"
 #include "plugins.h"
@@ -712,4 +713,44 @@ void MainWindow::subtitleTest(const QString& dir, bool online) {
     c->check("Echte Erkennung: Zeiten innerhalb des Videos", !job.cues().isEmpty() && job.cues().last().t1 <= pr_.total() + 0.01);
     c->note(QString("Dauer %1 s, Schritte: %2").arg(t.elapsed() / 1000.0, 0, 'f', 1).arg(states.filter(QRegularExpression("^(?!.*\\d+ %)")).join(" | ")));
     c->finish();
+}
+
+// Entwickler: Aussehen prüfen – Hauptfenster in drei Größen und sechs Designs (hell/dunkel) plus Einstellungen als Bilder.
+// Unsichtbar (offscreen) und stumm, nutzt nur ein erzeugtes Testvideo.
+void MainWindow::lookShots(const QString& dir) {
+    silent_ = true;
+    audio_->setMuted(true);
+    QDir().mkpath(dir);
+    static QTemporaryDir tmp;
+    const QString vid = tmp.filePath("Beispiel.mp4");
+    makeVideo(vid, "testsrc2", 1280, 720, 6, 440);
+    openFile(vid);
+    const QStringList ths = {"mint", "light", "minimal", "minimal_light", "acryl", "acryl_light"};
+    const QList<QSize> sizes = {QSize(960, 620), QSize(1280, 800), QSize(1920, 1080)};
+    int t = 2500;
+    for (const QString& th : ths) {
+        for (const QSize& sz : sizes) {
+            QTimer::singleShot(t, this, [=] {
+                setCurrentTheme(th);
+                setAccentColor(QString());
+                applyTheme();
+                resize(sz);
+                btnEdit_->setChecked(sz.width() != 960);
+            });
+            QTimer::singleShot(t + 600, this, [=] {
+                grab().save(QDir(dir).filePath(QString("%1-%2x%3.png").arg(th).arg(sz.width()).arg(sz.height())));
+            });
+            t += 900;
+        }
+        QTimer::singleShot(t, this, [=] {
+            auto* d = new SettingsDialog(this);
+            d->show();
+            QTimer::singleShot(400, d, [d, dir, th] {
+                d->grab().save(QDir(dir).filePath(QString("%1-einstellungen.png").arg(th)));
+                d->deleteLater();
+            });
+        });
+        t += 900;
+    }
+    QTimer::singleShot(t + 300, this, [] { QCoreApplication::exit(0); });
 }

@@ -651,20 +651,14 @@ void FramePreview::paintEvent(QPaintEvent*) {
     const QRectF pic(frame.center() - QPointF(cs.width() * k / 2, cs.height() * k / 2), cs * k);
     p.setPen(Qt::NoPen);
     if (fit_ == 2) {  // unscharfer Rand: verwaschene Fläche statt Schwarz
-        QLinearGradient g(frame.topLeft(), frame.bottomRight());
-        g.setColorAt(0, th.accent.darker(260));
-        g.setColorAt(1, th.accent.darker(190));
-        p.setBrush(g);
+        p.setBrush(th.accent.darker(230));
     } else {
         p.setBrush(QColor(0, 0, 0));
     }
     p.drawRoundedRect(frame, 4, 4);
     p.save();
     p.setClipRect(frame);
-    QLinearGradient g(pic.topLeft(), pic.bottomLeft());
-    g.setColorAt(0, th.accent.lighter(115));
-    g.setColorAt(1, th.accent.darker(140));
-    p.setBrush(g);
+    p.setBrush(th.accent.darker(120));
     p.drawRect(pic);
     p.restore();
     if (fit_ == 1 && (pic.width() > frame.width() + 1 || pic.height() > frame.height() + 1)) {

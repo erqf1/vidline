@@ -50,7 +50,7 @@ void VideoView::setAudioInfo(const QString& title, const QString& subtitle, cons
     viewport()->update();
 }
 
-// Hintergrund einer Tondatei: Cover groß und verschwommen, sonst ein ruhiger dunkler Verlauf mit etwas Akzentfarbe
+// Hintergrund einer Tondatei: Cover groß und verschwommen, sonst eine ruhige dunkle Fläche (keine Deko-Farbwolken)
 static void paintAudioBackground(QPainter* p, const QRect& vr, const QImage& blur) {
     p->fillRect(vr, QColor("#111318"));
     if (!blur.isNull()) {
@@ -58,16 +58,6 @@ static void paintAudioBackground(QPainter* p, const QRect& vr, const QImage& blu
         const double side = std::max(vr.width(), vr.height()) * 1.1;  // füllt alles, Ränder des Weichzeichners außerhalb
         p->drawImage(QRectF(vr.center().x() - side / 2, vr.center().y() - side / 2, side, side), blur);
         p->fillRect(vr, QColor(40, 40, 44, 150));  // grauer Schleier statt Schwarz: ruhig, Formen bleiben sichtbar
-    } else {
-        QColor a = currentTheme().accent;
-        for (const auto& [x, y, al] : {std::tuple{0.78, 0.18, 46}, {0.15, 0.85, 34}, {0.45, 0.55, 18}}) {
-            QRadialGradient g(QPointF(vr.left() + x * vr.width(), vr.top() + y * vr.height()), std::max(vr.width(), vr.height()) * 0.55);
-            a.setAlpha(al);
-            g.setColorAt(0, a);
-            a.setAlpha(0);
-            g.setColorAt(1, a);
-            p->fillRect(vr, g);
-        }
     }
     // unten dunkler, damit Titel und Cover-Karte gut lesbar sind
     QLinearGradient shade(0, vr.top() + vr.height() * 0.45, 0, vr.bottom());
@@ -135,11 +125,8 @@ void VideoView::drawForeground(QPainter* p, const QRectF&) {
         p->setBrush(Qt::NoBrush);
         p->drawPath(clip);
     } else {
-        QLinearGradient g(card.topLeft(), card.bottomRight());
-        g.setColorAt(0, QColor(54, 58, 68, 235));
-        g.setColorAt(1, QColor(30, 32, 38, 235));
         p->setPen(QPen(QColor(255, 255, 255, 38), 1));
-        p->setBrush(g);
+        p->setBrush(QColor(42, 45, 53, 235));
         p->drawPath(clip);
         paintNote(p, card);
     }
